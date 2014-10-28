@@ -1,31 +1,82 @@
 (ns hive.gui
+  (:use [hive.hex-grid])
   (:require [quil.core :as q]
             [quil.middleware :as m]))
+
+; http://quil.info/api
+; https://github.com/quil/quil/wiki/Functional-mode-(fun-mode)
+
+; my goal right now is just to draw a grid and light up the hex your cursor is on
 
 (def SKETCH-WIDTH 1024)
 (def SKETCH-HEIGHT 800)
 
 (def HEX-WIDTH 100) ; in pixels
-(def HEX-HEIGHT (/ (* 2 HEX-WIDTH) (Math/sqrt 3)))
-(def HEX-SIDE-LEN (/ HEX-WIDTH (Math/sqrt 3)))
+(def HEX-HEIGHT (hex-height-for-width HEX-WIDTH))
+(def HEX-SIDE-LEN (hex-side-length-for-width HEX-WIDTH))
+
+(defn draw-hex-sides
+  "Given an axial hex vector [p q], draw lines corresponding to particular sides of the
+  hexagon represented as [:ne e :se :sw :w :nw] directions."
+  [[p q] & dirs]
+  (doseq [dir dirs]
+    (let [[x y]  (axial->pixel p q HEX-WIDTH)
+          w-2    (/ HEX-WIDTH 2)
+          h-2    (/ HEX-HEIGHT 2)
+          h-4    (/ HEX-HEIGHT 4) ]
+      (apply q/line
+             (case dir
+               :ne [x         (- y h-2)
+                    (+ x w-2) (- y h-4)] ;  *\
+               :e  [(+ x w-2) (- y h-4)
+                    (+ x w-2) (+ y h-4)] ;  *|
+               :se [(+ x w-2) (+ y h-4)
+                    x         (+ y h-2)] ;  */
+               :sw [x         (+ y h-2)
+                    (- x w-2) (+ y h-4)] ; \*
+               :w  [(- x w-2) (- y h-4)
+                    (- x w-2) (+ y h-4)] ; |*
+               :nw [(- x w-2) (+ y h-2)
+                    x         (- y h-4)] ; /*
+               )))))
+
+
+(defn hexes-per-column
+  "decide how many hexes can fit on the vertical span of pixels"
+  [cy]
+  (/ cy HEX-HEIGHT))
+
+(defn axial-coords-fitting-sketch
+  "returns a sequence of axial hex coordinates for all hexes that
+  can fit on a display of the given dimensions"
+  [cx cy]
+  ; go right by hex-widths and down by 1.25 hex-heights
+  (for [y (range 0 cy (* 5/4 HEX-HEIGHT))
+        x (range 0 cx HEX-WIDTH) ]
+    (do
+      (println "converting pixel " [x y] " to hex coordinate " (pixel->nearest-hex [x y] HEX-WIDTH))
+      (pixel->nearest-hex [x y] HEX-WIDTH))))
 
 (comment
-  (prn HEX-WIDTH)
-  (prn HEX-HEIGHT)
-  (/ (* (Math/sqrt 3) ) 2)
+  (axial-coords-fitting-sketch 400 400)
+  (pixel->nearest-hex [351 0] HEX-WIDTH)
+  (axial-round (pixel->axial HEX-WIDTH [261 0]))
+  (axial->pixel 1 0 HEX-WIDTH)
+
   )
+
 
 (defn zigzag
   "draw a horizontal zigzag of the given dimensions."
   [x0 y0 seg-w seg-h rise-or-fall]
   (loop [x x0]
-    (if (= rise-or-fall :rise) 
-      (do 
+    (if (= rise-or-fall :rise)
+      (do
         (q/line x (+ y0 seg-h) (+ x seg-w) y0)
         (q/line (+ x seg-w) y0 (+ (* 2 seg-w) x) (+ y0 seg-h)))
-      (do 
-        (q/line (+ x seg-w) y0 (+ (* 2 seg-w) x) (+ y0 seg-h)) 
-        (q/line x (+ y0 seg-h) (+ x seg-w) y0)))
+      (do
+        (q/line (+ x seg-w) (+ y0 seg-h) (+ (* 2 seg-w) x) y0)
+        (q/line x y0  (+ x seg-w) (+ y0 seg-h))))
     (when (< x (q/width))
       (recur (+ x (* 2 seg-w))))))
 
@@ -45,7 +96,7 @@
         zig-y-offset    (/ (- HEX-HEIGHT HEX-SIDE-LEN) 2)
         ]
     (q/stroke 20 20 20)
-    (doseq [zig (range vertical-hexes)]
+    (doseq [zig (range -1 vertical-hexes)]
       (zigzag 0 ; (if (odd? zig) 0 (/ HEX-WIDTH 2)),
               (+ zig-y-offset (* zig 3/4 HEX-HEIGHT))
               (/ HEX-WIDTH 2),
@@ -59,17 +110,13 @@
         (verticals (/ HEX-WIDTH 2) (+ (/ HEX-HEIGHT 2) (* col 3/4 HEX-HEIGHT)))
         ))))
 
+
 (defn setup []
-  ; Set frame rate to 30 frames per second.
   (q/frame-rate 1)
-  ; Set color mode to HSB (HSV) instead of default RGB.
   ;; (q/color-mode :hsb)
-  ; setup function returns initial state. It contains
-  ; circle color and position.
   { })
 
 (defn update [state]
-  ; Update sketch state by changing circle color and position.
   state)
 
 (defn draw [state]
@@ -79,7 +126,7 @@
   ;; (q/fill (:color state) 255 255)
   (q/stroke-weight 1)
   (draw-hex-grid state)
-  (q/stroke-weight 5)
+  ;; (q/stroke-weight 5)
   (loop [x 0]
     (q/stroke (q/color 255 0 0))
     (q/line x 200 (+ x HEX-WIDTH) 200)
@@ -102,3 +149,4 @@
     ; Check quil wiki for more info about middlewares and particularly
     ; fun-mode.
     :middleware [m/fun-mode]))
+
