@@ -116,7 +116,7 @@
 (defn axial->pixel [size [p q]]
   ; assuming both coordinate systems share the same origin
   [(* size (Math/sqrt 3.0) (+ p (/ q 2.0)))
-   (* size 3/2 p)])
+   (* size 3/2 q)])
 
 (ann axial->cube [AxialPoint -> CubePoint])
 (defn axial->cube [[p q]]
