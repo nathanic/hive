@@ -12,15 +12,15 @@
 (def SKETCH-HEIGHT 800)
 
 (def HEX-WIDTH 100) ; in pixels
-(def HEX-HEIGHT (hex-height-for-width HEX-WIDTH))
-(def HEX-SIDE-LEN (hex-side-length-for-width HEX-WIDTH))
+(def HEX-HEIGHT (hex-height-from-width HEX-WIDTH))
+(def HEX-SIZE (hex-size-from-width HEX-WIDTH))
 
 (defn draw-hex-sides
   "Given an axial hex vector [p q], draw lines corresponding to particular sides of the
   hexagon represented as [:ne e :se :sw :w :nw] directions."
   [[p q] & dirs]
   (doseq [dir dirs]
-    (let [[x y]  (axial->pixel p q HEX-WIDTH)
+    (let [[x y]  (axial->pixel HEX-SIZE [p q])
           w-2    (/ HEX-WIDTH 2)
           h-2    (/ HEX-HEIGHT 2)
           h-4    (/ HEX-HEIGHT 4) ]
@@ -40,31 +40,17 @@
                     x         (- y h-4)] ; /*
                )))))
 
-
 (defn hexes-per-column
   "decide how many hexes can fit on the vertical span of pixels"
   [cy]
   (/ cy HEX-HEIGHT))
-
-(defn axial-coords-fitting-sketch
-  "returns a sequence of axial hex coordinates for all hexes that
-  can fit on a display of the given dimensions"
-  [cx cy]
-  ; go right by hex-widths and down by 1.25 hex-heights
-  (for [y (range 0 cy (* 5/4 HEX-HEIGHT))
-        x (range 0 cx HEX-WIDTH) ]
-    (do
-      (println "converting pixel " [x y] " to hex coordinate " (pixel->nearest-hex [x y] HEX-WIDTH))
-      (pixel->nearest-hex [x y] HEX-WIDTH))))
 
 (comment
   (axial-coords-fitting-sketch 400 400)
   (pixel->nearest-hex [351 0] HEX-WIDTH)
   (axial-round (pixel->axial HEX-WIDTH [261 0]))
   (axial->pixel 1 0 HEX-WIDTH)
-
   )
-
 
 (defn zigzag
   "draw a horizontal zigzag of the given dimensions."
@@ -82,18 +68,18 @@
 
 (defn verticals [x0 y0]
   (loop [x x0]
-    (q/line x y0 x (+ y0 HEX-SIDE-LEN))
+    (q/line x y0 x (+ y0 HEX-SIZE))
     (when (< x (q/width))
       (recur (+ x HEX-WIDTH)))))
 
-(defn draw-hex-grid [state]
+(defn draw-hex-grid-old [state]
   ; draw horizontal zigags
   ; then fill in vertical lines
   (let [win-w           (q/width)
         win-h           (q/height)
         hexes-per-row   (-> win-w (/ HEX-WIDTH) int)
-        vertical-hexes  (/ win-h HEX-SIDE-LEN)
-        zig-y-offset    (/ (- HEX-HEIGHT HEX-SIDE-LEN) 2)
+        vertical-hexes  (/ win-h HEX-SIZE)
+        zig-y-offset    (/ (- HEX-HEIGHT HEX-SIZE) 2)
         ]
     (q/stroke 20 20 20)
     (doseq [zig (range -1 vertical-hexes)]
@@ -109,6 +95,12 @@
         (verticals 0 (+ (/ HEX-HEIGHT 2) (* col 3/4 HEX-HEIGHT)))
         (verticals (/ HEX-WIDTH 2) (+ (/ HEX-HEIGHT 2) (* col 3/4 HEX-HEIGHT)))
         ))))
+
+(defn draw-hex-grid [state]
+  (let [win-w           (q/width)
+        win-h           (q/height)]
+    (doseq [pq (axial-coords-covering-rect HEX-SIZE win-w win-h)]
+      (draw-hex-sides pq :ne :e :se :sw :w :nw))))
 
 
 (defn setup []
@@ -150,3 +142,6 @@
     ; fun-mode.
     :middleware [m/fun-mode]))
 
+(comment
+  (for [n (range 1 16)] (cond (zero? (mod n 15)) "FizzBuzz" (zero? (mod n 3)) "Fizz" (zero? (mod n 5)) "Buzz" :else n))
+  )

@@ -4,29 +4,11 @@
              :as t
              :refer [defalias ann U Vec Map Seq]]))
 
-(comment
-  (t/check-ns)
-  )
-
-(ann hex-height-for-width [Number -> Number])
-(defn hex-height-for-width [width]
-  (/ (* 2 width) (Math/sqrt 3.0)))
-
-(ann hex-side-length-for-width [Number -> Number])
-(defn hex-side-length-for-width [width]
-  (/ width (Math/sqrt 3.0)))
-
 ; so we're using a pointy-top hex grid with an axial coordinate system
-
 ; http://www.redblobgames.com/grids/hexagons/#coordinates
-; axial coordinates
-;; neighbors = [
-;;    [+1,  0], [+1, -1], [ 0, -1],
-;;    [-1,  0], [-1, +1], [ 0, +1]
-;;
-;; d = neighbors [direction]
-;; return Hex (q + d[0], r + d[1])
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Types and Constants
 (defalias Direction "One of the 6 cardinal directions of pointy-topped hexagons"
   (U ':ne ':e ':se ':sw ':w ':nw))
 
@@ -54,8 +36,8 @@
                   :nw [ 0 -1]
                   })
 
-(ann move-direction [AxialPoint Direction -> AxialPoint])
-(defn move-direction
+(ann neighbor [AxialPoint Direction -> AxialPoint])
+(defn neighbor
   "given the coordinates of a hex and a direction, compute the
   coordinates of the neighbor hex in the given direction."
   [[p q] dir]
@@ -67,42 +49,74 @@
 (comment
   (t/check-ns)
   (t/cf (get DIR-VECTORS :ne [1 -1]))
-  (t/cf (move-direction [0 0] :ne))
+  (t/cf (neighbor [0 0] :ne))
   (t/cf [0 0] '[Number Number])
   (t/cf [0 0] AxialPoint)
   (t/cf [0 0] CubePoint)
   (t/cf (fn [[p q] d] [q p]) [AxialPoint Direction -> AxialPoint])
-  (move-direction [2 -2] :ne)
+  (neighbor [2 -2] :ne)
 
-  (move-direction [2 -2] :nw)
+  (neighbor [2 -2] :nw)
 
-  (neighbor-coords [2 -2])
+  (neighbors [2 -2])
+  (t/ASeq)
   )
 
-(ann neighbor-coords [AxialPoint -> (Seq AxialPoint)])
-(defn neighbor-coords
+(ann neighbors [AxialPoint -> (Seq AxialPoint)])
+(defn neighbors
   "given a coordinate pair [p q] in axial hex coordinates,
   compute the coordinates of all 6 neighboring points"
   [point]
-  (map (partial move-direction point) DIRS))
+  (map (partial neighbor point) DIRS))
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Jommetry
+(ann hex-height-from-width [Number -> Number])
+(defn hex-height-from-width [width]
+  (/ (* 2 width) (Math/sqrt 3.0)))
+
+(ann hex-size-from-width [Number -> Number])
+(defn hex-size-from-width [width]
+  (/ (double width) (Math/sqrt 3.0)))
+
+(ann hex-width-from-size [Number -> Number])
+(defn hex-width-from-size [size]
+  (* size (Math/sqrt 3.0)))
+
+(ann hex-height-from-size [Number -> Number])
+(defn hex-height-from-size [size]
+  (* size 2.0))
+
+(ann hex-dims-from-size [Number -> '[Number Number]])
+(defn hex-dims-from-size 
+  "returns a tuple [width height] for a hexagon given the `size` (length of a single side)"
+  [size]
+  [(hex-width-from-size size) (hex-height-from-size size)])
 
 
 ; q = (1/3*sqrt(3) * x - 1/3 * y) / size
 ; r = 2/3 * y / size
 (ann pixel->axial [Number PixelPoint -> AxialPoint])
-(defn pixel->axial [hex-width [x y]]
+(defn pixel->axial
+  "given the size (side length) of a hexagon in pixel coordinates,
+  and a point in pixel coordinates, transform it to the corresponding point
+  in axial hex grid space."
+  [size [x y]]
   [(/ (- (* (Math/sqrt 3.0) x) y)
-      hex-width
+      size
       3.0)
-   (-> y (* 2/3) (/ hex-width)) ])
+   (-> y (* 2/3) (/ size)) ])
 
+(comment
+  (/ 100.0 2 2)
+  )
 
 (ann axial->pixel [Number AxialPoint -> PixelPoint])
-(defn axial->pixel [hex-width [p q]]
+(defn axial->pixel [size [p q]]
   ; assuming both coordinate systems share the same origin
-  [(* hex-width (Math/sqrt 3.0) (+ p (/ q 2.0)))
-   (* hex-width 3/2 p)])
+  [(* size (Math/sqrt 3.0) (+ p (/ q 2.0)))
+   (* size 3/2 p)])
 
 (ann axial->cube [AxialPoint -> CubePoint])
 (defn axial->cube [[p q]]
@@ -113,11 +127,11 @@
   [x y])
 
 (ann round [Number -> Long])
-(defn round [x]
+(defn- round [x]
   (-> x double Math/round))
 
 (ann abs [Number -> Double])
-(defn abs [x]
+(defn- abs [x]
   (-> x double Math/abs))
 
 (comment
@@ -126,9 +140,9 @@
 
 (ann cube-round [CubePoint -> CubePoint])
 (defn cube-round
-  "round each cubic hex coordinate, see which one was the farthest off,
-  and replace it from the other two coords given the cube constraint
-  x + y + z = 0"
+  "round each cubic hex coordinate, determine which one is the most different
+  from its pre-rounding value, and replace it from the other two coords given
+  the planar cube constraint: x + y + z = 0"
   [[x y z]]
   (let [rx (round x)
         ry (round y)
@@ -138,32 +152,79 @@
         dz (abs (- rz z)) ]
     (cond
       (and (> dx dy) (> dx dz)) [(- 0 ry rz) ry rz]
-      (> dy dz)                 [rx (- 0 ry rz) rz]
+      (> dy dz)                 [rx (- 0 rx rz) rz]
       :else                     [rx ry (- 0 rx ry)])))
 
+; this is so much easier to do with a change of coordinate systems
+; than to try to naively deal with hexagon tile geometry,
+; which is probably what i would have done. (thanks Amit!)
 (ann axial-round [AxialPoint -> AxialPoint])
 (defn axial-round
-  "round the given point [p q] in axial hex coordinates to the nearest integer hex"
+  "round the given point [p q] in axial hex coordinates to the nearest integer hex."
   [pt]
   (-> pt axial->cube cube-round cube->axial))
 
 (ann pixel->nearest-hex [Number PixelPoint -> AxialPoint])
-(defn pixel->nearest-hex [hex-width xy]
-  (->> xy (pixel->axial hex-width) axial-round))
+(defn pixel->nearest-hex
+  "compute the integer coordinates in axial hex space corresponding to the center
+  of the hex on which the given pixel coordinates fall."
+  [hex-size xy]
+  (->> xy (pixel->axial hex-size) axial-round))
 
+(ann axial-coords-covering-rect [Number Number Number -> (Seq AxialPoint)])
+(defn axial-coords-covering-rect
+  "returns a sequence of axial hex coordinates for all hexes that
+  at least partially fit on a rectangle of the given dimensions"
+  [hex-size cx cy]
+  ; go right by hex-widths and down by 3/4 hex-heights
+  (let [[width height] (hex-dims-from-size hex-size)]
+    (t/for [y :- Number, (range 1 cy (* 3/4 height))
+            x :- Number, (range 1 cx width) ] :- AxialPoint
+      (pixel->nearest-hex hex-size [x y]))))
 
 (comment
   (t/cf (pixel->axial 100.0 [1 1]))
   (t/cf (->> [1 1] (pixel->axial 100.0)))
   (t/cf (->> [1 1] (pixel->axial 100.0) axial-round))
-  (do (def w 100) (def h (hex-height-for-width w)))
-  (pixel->nearest-hex w [0 0]) ;=> [0 0]
-  (pixel->nearest-hex w [w 0]) ;=> [1 0]
-  (pixel->nearest-hex w [0 h]) ;=> [0 1]
-  (pixel->nearest-hex w [0 (* 2 h)]) ;=> [-1 -1]   ;; NOPE
-  (axial->pixel w [-1 -1]) ;=> [-259.8076211353316 -150N]  ;; also NOPE
+  (do (def w 100) (def h (hex-height-from-width w)) (def s (hex-size-from-width w)))
+  (pixel->nearest-hex s [0 0]) ;=> [0 0]
+  (pixel->nearest-hex s [w 0]) ;=> [1 0]
+  (pixel->nearest-hex s [0 h]) ;=> [0 1]
+  (pixel->nearest-hex s [0 (* 2 h)]) ;=> [-1 -1]   ;; NOPE
+  (axial->pixel s [-1 -1]) ;=> [-259.8076211353316 -150N]  ;; also NOPE
 
-  (pixel->axial )
+  (axial->pixel s [0 0])
+  (axial->pixel s [1 0]) ;=> [100.0 86.60254037844388]
+  (axial->pixel s [-1 2]) ;=> still nope
+  [w h s]
+  (/ (* -2.0 115) 300.0)
+  (/ (* 4 h) 300.0)
+  (axial-round [-0.7666 1.540])
+  (* 2 h)
+  (axial->cube [-0.7666 1.540]) ;=> [-0.7666 1.54 -0.7734000000000001]
+  (cube-round [-0.7666 1.54 -0.7734000000000001]) ;=> [-1 -1 -1]
+  (map round [-0.7666 1.54 -0.7734000000000001])
+  (map (fn [x] (abs (- (round x) x))) [-0.7666 1.54 -0.7734000000000001])
+
+
+  (pixel->axial s [0 0])
+  (pixel->axial s [1 0])
+  (pixel->axial s [10 0])
+  (pixel->nearest-hex s [10 0])
+  (pixel->nearest-hex s [w 0])
+  (pixel->axial s [0 (* 2 h)])
   )
 
+(comment
+  (do (def w 100) (def h (hex-height-from-width w)) (def s (hex-size-from-width w)))
+  (axial-coords-covering-rect s 400 300)
+  (use 'clojure.pprint)
+
+  (pprint
+    (let [cx 400, cy 300
+          [width height] (hex-dims-from-size s)]
+      (t/for [y :- Number, (range 1 cy (* 3/4 height))
+              x :- Number, (range 1 cx width) ] :- AxialPoint
+        [[x y] (pixel->nearest-hex s [x y])])))
+  )
 
