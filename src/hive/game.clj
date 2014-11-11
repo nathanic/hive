@@ -1,6 +1,24 @@
-(ns hive.core
+(ns hive.game
   (:use [hive hex-grid]
         [loom graph alg attr]))
+
+
+(def LETTER->SPECIES
+  {\A :ant
+   \B :beetle
+   \G :hopper
+   \L :ladybug
+   \M :mosquito
+   \P :pillbug
+   \Q :queenbee
+   \S :spider})
+
+; (ann species [Piece -> (U Species nil)]
+(defn piece-species [piece]
+  (->> piece name second (get LETTER->SPECIES)))
+
+(defn piece-player [piece]
+  (->> piece name first (get {\w :white, \b :black})))
 
 (comment
   (def board {:bQ  {:e  :bG1
@@ -76,7 +94,7 @@
                       (-> g
                           (add-edges [piece nabe-piece] )
                           (add-attr piece nabe-piece :dir dir )
-                          (add-attr nabe-piece :pos (move-direction (attr g piece :pos) dir))))
+                          (add-attr nabe-piece :pos (neighbor (attr g piece :pos) dir))))
                     g
                     (get board piece)))
           ; prime the graph with the first node and a position at the origin

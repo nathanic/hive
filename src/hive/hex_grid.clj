@@ -94,6 +94,10 @@
   [size]
   [(hex-width-from-size size) (hex-height-from-size size)])
 
+(comment
+  (hex-width-from-size (hex-size-from-width 100.0))
+  (hex-height-from-size (hex-height-from-width 100.0))
+  )
 
 ; q = (1/3*sqrt(3) * x - 1/3 * y) / size
 ; r = 2/3 * y / size
