@@ -107,6 +107,17 @@
     (q/quad nx ny nex ney sex sey sx sy)
     (q/quad nx ny nwx nwy swx swy sx sy)))
 
+(defn draw-hex-outline [pq inset thickness color]
+  (q/stroke-weight thickness)
+  (q/stroke color)
+  (let [[n ne se s sw nw] (pixel-verticies-of-hex pq HEX-SIZE inset)]
+    (q/line n ne)
+    (q/line ne se)
+    (q/line se s)
+    (q/line s sw)
+    (q/line sw nw)
+    (q/line nw n)))
+
 (def PLAYER->COLOR
   {:white [250 250 250]
    :black [10 10 10]
@@ -221,7 +232,7 @@
             (let [pq (pixel->nearest-hex HEX-SIZE [x y])]
               (if (nil? (piece-at-position state pq))
                 (insert-piece-at-position state piece pq)
-                state))
+                (assoc state :selected pq)))
             state)
     state))
 
@@ -235,8 +246,10 @@
   (draw-hex-grid state)
   (doseq [[coords piece] (:pieces state)]
     (render-piece coords piece))
+  (if-let [selected-hex (:selected state)]
+    (draw-hex-outline selected-hex 2 5 (q/color 255 10 10 240)))
   (if-let [mouse-hex (:hovered state)]
-    (draw-filled-hex mouse-hex 10 (q/color 255 100 10 200))))
+    (draw-filled-hex mouse-hex 1 (q/color 255 100 10 200))))
 
 
 (defn go []
