@@ -1,7 +1,6 @@
 (ns hive.hex-grid
   (:use [loom graph alg attr])
-  (:require [clojure.core.typed
-             :as t
+  (:require [clojure.core.typed :as t
              :refer [defalias ann U Vec Map Seq]]))
 
 ; so we're using a pointy-top hex grid with an axial coordinate system
@@ -12,6 +11,9 @@
 (defalias Direction "One of the 6 cardinal directions of pointy-topped hexagons"
   (U ':ne ':e ':se ':sw ':w ':nw))
 
+(defalias Rotation "Clockwise or counterclockwise (widdershins)"
+  (U ':cw ':ccw))
+
 (defalias AxialVector "A 2-vector in axial hex coordinates"
   '[Number Number])
 
@@ -19,6 +21,9 @@
   '[Number Number])
 
 (defalias CubePoint "A point in 3D cube hex coordinates"
+  '[Number Number Number])
+
+(defalias CubeVector "A 3-vector in 3D cube hex coordinates"
   '[Number Number Number])
 
 (defalias PixelPoint "A point in 2D pixel coordinates"
@@ -36,13 +41,28 @@
                   :nw [ 0 -1]
                   })
 
+(ann DIR-OPPOSITES (Map Direction Direction))
+(def DIR-OPPOSITES
+  {:ne :sw
+   :e  :w
+   :se :nw
+   :sw :ne
+   :w  :e
+   :nw :se
+   })
+
+(ann opposite-direction [Direction -> Direction])
+(defn opposite-direction
+  [dir]
+  (DIR-OPPOSITES dir))
+
 (ann neighbor [AxialPoint Direction -> AxialPoint])
 (defn neighbor
   "given the coordinates of a hex and a direction, compute the
   coordinates of the neighbor hex in the given direction."
   [[p q] dir]
-  [0 0]
-  #_(if-let [[dp dq] (get DIR-VECTORS dir)]
+  ;; [0 0]
+  (if-let [[dp dq] (get DIR-VECTORS dir)]
     [(+ p dp) (+ q dq)]
     (throw (new IllegalArgumentException (str "Invalid direction: " dir)))))
 
@@ -232,3 +252,53 @@
         [[x y] (pixel->nearest-hex s [x y])])))
   )
 
+;http://www.redblobgames.com/grids/hexagons/#rotation
+(ann rotate-vector-60 [CubeVector Rotation -> CubeVector])
+(defn rotate-vector-60
+  [[x y z] rot]
+  (case rot
+    :cw  [(- y) (- z) (- x)]
+    :ccw [(- z) (- x) (- y)]
+    ))
+
+(ann plus [CubePoint CubeVector -> CubePoint])
+(defn plus
+  [[x y z] [dx dy dz]]
+  [(+ x dx) (+ y dy) (+ z dz)])
+; (mapv - [3 2 1] [4 5 6]) also works but i had trouble getting the types right
+
+(ann minus [CubePoint CubePoint -> CubeVector])
+(defn minus
+  [[x1 y1 z1] [x2 y2 z2]]
+  [(- x1 x2) (- y1 y2) (- z1 z2)])
+
+(ann gate-positions [AxialPoint AxialPoint -> '[AxialPoint AxialPoint]])
+(defn gate-positions
+  [apq bpq]
+  (let [acube (axial->cube apq)
+        bcube (axial->cube bpq) 
+        cubevec (minus bcube acube)
+        gate1 (plus acube (rotate-vector-60 cubevec :cw))
+        gate2 (plus acube (rotate-vector-60 cubevec :ccw)) ]
+    [(cube->axial gate1) (cube->axial gate2)]))
+
+(comment
+  (= (gate-positions [0 1] [0 2]) [[-1 2] [1 1]])
+  (= (gate-positions [0 4] [1 3]) [[1 4] [0 3]])
+  )
+
+(ann find-direction-from-axial-points [AxialPoint AxialPoint -> (U Nil Direction)])
+(defn find-direction-from-axial-points 
+  [from-pq to-pq]
+  (get (clojure.set/map-invert DIR-VECTORS) (mapv - to-pq from-pq))
+  )
+(comment
+  (find-direction-from-axial-points [2 7] [3 6])
+  (find-direction-from-axial-points [2 7] [3 7])
+  (find-direction-from-axial-points [2 7] [2 8])
+  (find-direction-from-axial-points [2 7] [1 8])
+  (find-direction-from-axial-points [2 7] [1 7])
+  (find-direction-from-axial-points [2 7] [2 6])
+  (find-direction-from-axial-points [2 7] [0 0])
+  
+  )
