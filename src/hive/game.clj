@@ -278,9 +278,10 @@
 
 (ann allowed-moves [Board grid/AxialPoint -> (Set grid/AxialPoint)])
 (defmulti allowed-moves
-  "internal helper multimethod; you probably want calculate-moves"
+  "internal helper multimethod; you probably want to call calculate-moves instead"
   (fn [board pq] (piece->species (get board pq))))
 
+; don't know what it is -> it gets no moves
 (defmethod allowed-moves :default
   [_ _]
   #{})
@@ -339,7 +340,7 @@
 (comment
   (grid/neighbor [3 4] :ne)
   (def board (:board @hive.gui/state*))
-  (allowed-moves board [3 4])
+  (allowed-moves board [2 4])
   (for [x (range 3), x (range 4 6)] x)
   )
 ; grasshopper moves
@@ -358,11 +359,29 @@
 ; beetle moves
   ; accept all occupied immediate neighbor cells
   ; plus all planar passable neighbors
+(defmethod allowed-moves :beetle
+  [board pq]
+  (println "calculating beatle moves" pq board)
+  (set
+    (for [neighbor-pq (grid/neighbors pq)
+          :when (or (occupied? board neighbor-pq)
+                    (planar-passable? board pq neighbor-pq)) ]
+      neighbor-pq)))
 
 ; ladybug moves
   ; for each occupied neighbor
     ; for each occupied 2nd order neighbor (allowing backtracking)
       ; accumulate all unoccupied 3rd order neighbors
+(defmethod allowed-moves :ladybug
+  [board pq]
+  (set
+    (let [board (dissoc board pq)]
+      (for [[nabe-pq _]  (occupied-neighbors board pq)
+            [nabe2-pq _] (occupied-neighbors board nabe-pq)
+            nabe3-pq (grid/neighbors nabe2-pq)
+            :when    (unoccupied? board nabe3-pq)
+            ]
+        nabe3-pq))))
 
 ; mosquito moves
   ; if mosquito is atop another piece, use beetle rules
@@ -380,12 +399,6 @@
       ; that is, pillbug logic is invoked for EVERY piece movement
       ; if piece is adjacent to pillbug
         ; and has not moved in last turn
-
-; so we'll need operations like:
-  ; (occupied? board pt)
-  ; (neighbors pt)
-  ; (gated? board pt1 pt2)
-
 
 (ann calculate-moves [Board grid/AxialPoint -> (Set grid/AxialPoint)])
 (defn calculate-moves

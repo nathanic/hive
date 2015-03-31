@@ -217,7 +217,7 @@
   (q/frame-rate 15)
   ;; (q/color-mode :hsb)
   {:board {}
-   :unplaced (game/PIECES)
+   :unplaced game/PIECES
    })
 
 (defn update [state]
