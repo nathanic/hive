@@ -89,6 +89,21 @@
   [point]
   (map (partial neighbor point) DIRS))
 
+(ann cube-distance [CubePoint CubePoint -> Number])
+(defn cube-distance
+  [[x1 y1 z1] [x2 y2 z2]]
+  (-> (+ (abs (- x1 x2))
+         (abs (- y1 y2))
+         (abs (- z1 z2)))
+      long
+      (/ 2)))
+
+(ann neighbors? [AxialPoint AxialPoint -> bool])
+(defn neighbors? [pq1 pq2]
+  (let [cu1 (axial->cube pq1)
+        cu2 (axial->cube pq2)
+        dist (cube-distance cu1 cu2)]
+    (= dist 1)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Jommetry
@@ -109,7 +124,7 @@
   (* size 2.0))
 
 (ann hex-dims-from-size [Number -> '[Number Number]])
-(defn hex-dims-from-size 
+(defn hex-dims-from-size
   "returns a tuple [width height] for a hexagon given the `size` (length of a single side)"
   [size]
   [(hex-width-from-size size) (hex-height-from-size size)])
@@ -276,7 +291,7 @@
 (defn gate-positions
   [apq bpq]
   (let [acube (axial->cube apq)
-        bcube (axial->cube bpq) 
+        bcube (axial->cube bpq)
         cubevec (minus bcube acube)
         gate1 (plus acube (rotate-vector-60 cubevec :cw))
         gate2 (plus acube (rotate-vector-60 cubevec :ccw)) ]
@@ -288,7 +303,7 @@
   )
 
 (ann find-direction-from-axial-points [AxialPoint AxialPoint -> (U Nil Direction)])
-(defn find-direction-from-axial-points 
+(defn find-direction-from-axial-points
   [from-pq to-pq]
   (get (clojure.set/map-invert DIR-VECTORS) (mapv - to-pq from-pq))
   )
@@ -300,5 +315,5 @@
   (find-direction-from-axial-points [2 7] [1 7])
   (find-direction-from-axial-points [2 7] [2 6])
   (find-direction-from-axial-points [2 7] [0 0])
-  
+
   )

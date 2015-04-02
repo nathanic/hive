@@ -1,6 +1,7 @@
 (ns hive.game
   (:use [loom graph alg attr])
   (:require [hive.hex-grid :as grid]
+            [clojure.core.match :refer [match]]
             [clojure.core.typed :as t
              :refer [defalias ann U Vec Map Seq]]
             ))
@@ -145,7 +146,12 @@
     (and
       (unoccupied? board to)
       (some (partial occupied? board')   (grid/neighbors to))
-      (some (partial unoccupied? board') (grid/gate-positions from to)))))
+      ; one gate position MUST be filled, other MUST NOT be filled
+      (let [[g1 g2] (grid/gate-positions from to)
+            occ1    (unoccupied? board' g1)
+            occ2    (unoccupied? board' g2)]
+        (or (and occ1 (not occ2))
+            (and (not occ1) occ2))))))
 
 (defn piece-is-free?
   "given a graph of a Hive board, and a piece name keyword,
@@ -354,13 +360,13 @@
           :let  [nabe-pq (grid/neighbor pq dir)]
           :when (occupied? board nabe-pq) ]
       ; scan in this direction until we see an unoccupied hex
-      (some (fn [pq] (and (unoccupied? board pq) pq)) 
+      (some (fn [pq] (and (unoccupied? board pq) pq))
             (iterate (fn [pq] (grid/neighbor pq dir)) nabe-pq))
       )))
 
 (comment
   (calculate-moves b [1 6])
-  
+
   )
 ; ant moves
   ; for each occupied point
@@ -368,7 +374,65 @@
   ; for each point in the graph
     ; add edges to all passable neighbors
   ; return all points connected to starting position
+(defmethod allowed-moves :ant
+  [board pq]
+  (-> (let [board (dissoc board pq)
+            empties (set
+                      (for [[ppq piece] board
+                            nabe-pq     (grid/neighbors ppq)
+                            :when       (unoccupied? board nabe-pq) ]
+                        nabe-pq))
+            surround-graph (apply graph
+                                  (for [pq1 empties
+                                        pq2 empties
+                                        ;; :let [_ (println "(planar-passable? board" pq1 pq2 ") =>"
+                                                         ;; (planar-passable? board pq1 pq2) )]
+                                        :when (and (not= pq1 pq2)
+                                                   (grid/neighbors? pq1 pq2)
+                                                   (planar-passable? board pq1 pq2)) ]
+                                    [pq1 pq2])) ]
+        (bf-traverse surround-graph pq)
+        )
+      set
+      (disj pq) ; don't allow starting position
+      ))
 
+(comment
+  (def board b)
+  (def pq [0 7])
+  (calculate-moves b [0 7])
+
+  (swap! state* assoc :valid-moves (calculate-moves b [0 7]))
+  (planar-passable? board [2 7] [3 6])
+
+  (def g (graph [:a :b] [:b :c] [:d :e]))
+  (bf-traverse g :a)
+  (loom.io/view g)
+  (def empties (set
+                 (for [[ppq piece] (dissoc board pq)
+                       nabe-pq     (grid/neighbors ppq)
+                       :when       (unoccupied? (dissoc board pq) nabe-pq) ]
+                   nabe-pq)))
+
+  (def surround-graph (apply graph
+                             (for [pq1 empties
+                                   pq2 empties
+                                   :when (and (not= pq1 pq2)
+                                              (grid/neighbors? pq1 pq2)
+                                              (planar-passable? board pq1 pq2)) 
+                                   ]
+                               (do
+                                 (println "(planar-passable? board" pq1 pq2 ") =>"
+                                                    (planar-passable? board pq1 pq2) )
+                                 [pq1 pq2]))))
+  (clojure.pprint/pprint surround-graph)
+  (count (connected-components surround-graph))
+  (grid/neighbors? [2 7] [3 6])
+  (grid/neighbors? [2 7] [4 6])
+  (planar-passable? (dissoc board pq) [0 7] [0 8])
+
+  (swap! state* assoc :valid-moves (bf-traverse surround-graph pq))
+  )
 ; beetle moves
   ; accept all occupied immediate neighbor cells
   ; plus all planar passable neighbors
@@ -450,17 +514,25 @@
       deref
       :board
       )
-  (def state* (quil.applet/with-applet hive.gui/hive-applet (quil.core/state-atom)))
   (swap! state* assoc-in [:board [3 4]] :bQ)
   (swap! state* assoc-in [:board [2 6]] :bL)
   (do
+    (def state* (quil.applet/with-applet hive.gui/hive-applet (quil.core/state-atom)))
+    ; this board has shown me several move calc errors already...
     (def b {[3 4] :bQ
             [2 5] :bS1
             [2 6] :wS1
             [1 7] :wQ
             [1 6] :wG1
             [2 4] :bL
+            [4 4] :bP
+            [0 7] :wA1
+
+            [4 5] :bA2
+            [4 6] :bA3
+            [3 7] :wS2
             })
     (swap! state* assoc :board b)
     )
+    (keys @state*)
   )
