@@ -419,7 +419,7 @@
                                    pq2 empties
                                    :when (and (not= pq1 pq2)
                                               (grid/neighbors? pq1 pq2)
-                                              (planar-passable? board pq1 pq2)) 
+                                              (planar-passable? board pq1 pq2))
                                    ]
                                (do
                                  (println "(planar-passable? board" pq1 pq2 ") =>"
@@ -509,11 +509,13 @@
 
 (comment
   ; how to reach into the state of the currently running applet
-  (-> hive.gui/hive-applet
-      (quil.applet/with-applet (quil.core/state-atom))
-      deref
-      :board
-      )
+  (defn current-board!
+    []
+    (-> hive.gui/hive-applet
+        (quil.applet/with-applet (quil.core/state-atom))
+        deref
+        :board
+        ))
   (swap! state* assoc-in [:board [3 4]] :bQ)
   (swap! state* assoc-in [:board [2 6]] :bL)
   (do
@@ -531,8 +533,58 @@
             [4 5] :bA2
             [4 6] :bA3
             [3 7] :wS2
+
+            ;; [1 5] :wM
             })
     (swap! state* assoc :board b)
     )
     (keys @state*)
+    (clojure.set/rename-keys b)
+    (into {} (map (fn [[[p q] v]] [[q p] v]) b))
+
+    ; shift the pieces along the q-axis
+    (swap! state* assoc :board
+           (into {} (map (fn [[[p q] v]]
+                           [[p (dec q)] v])
+                         b)))
+
   )
+
+
+; spawn positions
+; must be empty hexes
+; must be neighbors of $player color
+; must not be neighbors of $opposing-player color
+; for each friendly piece
+  ; for each unoccupied neighbor hex of piece
+    ; accum hex if this empty neighbor has no pieces of opposing color
+(defn spawn-positions [board player]
+  (set
+    (for [; find all friendly pieces
+          [pq piece] board
+          :when      (= player (piece->player piece))
+          ; find all empty neighbors of friendly pieces
+          empty-pq   (grid/neighbors pq)
+          ;; :let       [_ (println "considering empty space" empty-pq)]
+          ; require that those empty neighbors are themselves not neighbors with any unfriendly pieces
+          :when      (and (unoccupied? board empty-pq)
+                          (every? (fn [nabe-piece]
+                                    (= player (piece->player nabe-piece)))
+                                  (map second (occupied-neighbors board empty-pq))))
+          ]
+      empty-pq)))
+
+(comment
+  (swap! state* assoc :valid-moves (spawn-positions (current-board!) :white))
+  (swap! state* assoc :valid-moves (spawn-positions (current-board!) :black))
+  )
+
+; how to represent stacked pieces?
+; board is map to lists of pieces instead of to pieces?
+  ; sounds like an un-fun refactor
+; multiple boards for each z-index?
+; store covered pieces in another structure?
+  ; :covered {[0 0] [:wQ :bB1 :wB2]}
+  ; the main board structure always reflects topmost/effective pieces
+  ; (stack-height? state pq)
+
