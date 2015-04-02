@@ -42,7 +42,7 @@
      ))
 
 (defalias Species "a species-identifier keyword"
-  (U ':ant ':beetle ':hopper ':ladybug ':mosquito ':pillbug ':queen-bee ':spider))
+  (U ':ant ':beetle ':grasshopper ':ladybug ':mosquito ':pillbug ':queen-bee ':spider))
 
 (defalias Player "a player-identifier keyword"
   (U ':white ':black))
@@ -54,7 +54,7 @@
 (def LETTER->SPECIES
   {\A :ant
    \B :beetle
-   \G :hopper
+   \G :grasshopper
    \L :ladybug
    \M :mosquito
    \P :pillbug
@@ -290,7 +290,6 @@
 ; might do this as a multimethod
 (defmethod allowed-moves :queen-bee
   [board pq]
-  (assert (#{:wQ :bQ} (get board pq)))
   (set
     (for [neighbor-pq (grid/neighbors pq)
           :when (planar-passable? board pq neighbor-pq) ]
@@ -322,18 +321,17 @@
   ; return all planar passable 3rd order neighbors without reversing course
 (defmethod allowed-moves :spider
   [board pq]
-  ;; (assert (#{:wS1 :wS2 :bS1 :bS2} (get board pq)))
   (set
     (let [board (dissoc board pq)]
-      (for [dir       grid/DIRS
-            :let      [nabe-pq (grid/neighbor pq dir)]
-            :when     (planar-passable? board pq nabe-pq)
-            dir2      (remove #{(grid/opposite-direction dir)} grid/DIRS)
-            :let      [nabe2-pq (grid/neighbor nabe-pq dir2)]
-            :when     (planar-passable? board nabe-pq nabe2-pq)
-            dir3      (remove #{(grid/opposite-direction dir2)} grid/DIRS)
-            :let      [nabe3-pq (grid/neighbor nabe2-pq dir3)]
-            :when     (planar-passable? board nabe2-pq nabe3-pq)
+      (for [dir   grid/DIRS
+            :let  [nabe-pq (grid/neighbor pq dir)]
+            :when (planar-passable? board pq nabe-pq)
+            dir2  (remove #{(grid/opposite-direction dir)} grid/DIRS)
+            :let  [nabe2-pq (grid/neighbor nabe-pq dir2)]
+            :when (planar-passable? board nabe-pq nabe2-pq)
+            dir3  (remove #{(grid/opposite-direction dir2)} grid/DIRS)
+            :let  [nabe3-pq (grid/neighbor nabe2-pq dir3)]
+            :when (planar-passable? board nabe2-pq nabe3-pq)
             ]
         nabe3-pq))))
 
@@ -343,12 +341,27 @@
   (allowed-moves board [2 4])
   (for [x (range 3), x (range 4 6)] x)
   )
+
 ; grasshopper moves
   ; for each cardinal direction (of the 6)
     ; walk that direction on the grid
       ; if the immediate neighbor is not occupied, continue to next direction
       ; if occupied, keep walking until unoccupied point found and return that point
+(defmethod allowed-moves :grasshopper
+  [board pq]
+  (set
+    (for [dir grid/DIRS
+          :let  [nabe-pq (grid/neighbor pq dir)]
+          :when (occupied? board nabe-pq) ]
+      ; scan in this direction until we see an unoccupied hex
+      (some (fn [pq] (and (unoccupied? board pq) pq)) 
+            (iterate (fn [pq] (grid/neighbor pq dir)) nabe-pq))
+      )))
 
+(comment
+  (calculate-moves b [1 6])
+  
+  )
 ; ant moves
   ; for each occupied point
     ; add all of its unoccupied neighbors to a graph as a node
@@ -361,7 +374,6 @@
   ; plus all planar passable neighbors
 (defmethod allowed-moves :beetle
   [board pq]
-  (println "calculating beatle moves" pq board)
   (set
     (for [neighbor-pq (grid/neighbors pq)
           :when (or (occupied? board neighbor-pq)
@@ -388,6 +400,19 @@
   ; else if only neighbor is mosquito, return empty set
   ; else union the movesets from this position using the rules for all neighboring pieces
     ; might need special attention for pillbugging as mosquito
+(defmethod allowed-moves :mosquito
+  [board pq]
+  (set
+    ; TODO: check if we are atop anything, use beetle rules
+    (let [board (dissoc board pq)]
+      ; could be more efficient by not repeating neighbor species
+      (for [[nabe-pq nabe-piece]  (occupied-neighbors board pq)
+            :when (not= (piece->species nabe-piece) :mosquito)
+            ]
+        (allowed-moves
+          ; pretend the mosquito is another piece
+          (assoc board pq (-> nabe-piece name (str "MOSQUITO") keyword ))
+          pq)))))
 
 ; pillbug moves
   ; queen movement rules
@@ -399,13 +424,43 @@
       ; that is, pillbug logic is invoked for EVERY piece movement
       ; if piece is adjacent to pillbug
         ; and has not moved in last turn
+(defmethod allowed-moves :pillbug
+  [board pq]
+  ; movement of other pieces will be handled for those other pieces
+  ; here we just calculate queen moves for the pillbug's own movement
+  (set
+    (for [neighbor-pq (grid/neighbors pq)
+          :when (planar-passable? board pq neighbor-pq) ]
+      neighbor-pq)))
 
-(ann calculate-moves [Board grid/AxialPoint -> (Set grid/AxialPoint)])
+(ann calculate-moves [State grid/AxialPoint -> (Set grid/AxialPoint)])
 (defn calculate-moves
   "calculate the set of possible destination coordinates for the bug at a given position"
   [board pq]
+  ; TODO: pillbug checks
   (let [bg (board->graph board)]
     (if (piece-is-free? bg (get board pq))
       (allowed-moves board pq)
       #{})))
 
+(comment
+  ; how to reach into the state of the currently running applet
+  (-> hive.gui/hive-applet
+      (quil.applet/with-applet (quil.core/state-atom))
+      deref
+      :board
+      )
+  (def state* (quil.applet/with-applet hive.gui/hive-applet (quil.core/state-atom)))
+  (swap! state* assoc-in [:board [3 4]] :bQ)
+  (swap! state* assoc-in [:board [2 6]] :bL)
+  (do
+    (def b {[3 4] :bQ
+            [2 5] :bS1
+            [2 6] :wS1
+            [1 7] :wQ
+            [1 6] :wG1
+            [2 4] :bL
+            })
+    (swap! state* assoc :board b)
+    )
+  )

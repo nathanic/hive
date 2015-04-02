@@ -144,7 +144,7 @@
 (def SPECIES->COLOR
   {:ant [10 10 250]
    :beetle [250 10 250]
-   :hopper [10 250 10]
+   :grasshopper [10 250 10]
    :ladybug [250 10 10]
    :mosquito [100 100 100]
    :pillbug [10 250 250]
@@ -307,7 +307,7 @@
 
 
 (defn go []
-  (q/defsketch hello-quil
+  (q/defsketch hive-applet
     :title "Hive Prototype"
     :size [SKETCH-WIDTH SKETCH-HEIGHT]
     ; setup function called only once, during sketch initialization.
@@ -326,5 +326,5 @@
 (comment
   (go)
   (for [n (range 1 16)] (cond (zero? (mod n 15)) "FizzBuzz" (zero? (mod n 3)) "Fizz" (zero? (mod n 5)) "Buzz" :else n))
-
+  (q/state-atom)
   )
