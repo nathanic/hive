@@ -565,12 +565,12 @@
           :when      (= player (piece->player piece))
           ; find all empty neighbors of friendly pieces
           empty-pq   (grid/neighbors pq)
-          ;; :let       [_ (println "considering empty space" empty-pq)]
           ; require that those empty neighbors are themselves not neighbors with any unfriendly pieces
           :when      (and (unoccupied? board empty-pq)
-                          (every? (fn [nabe-piece]
-                                    (= player (piece->player nabe-piece)))
-                                  (map second (occupied-neighbors board empty-pq))))
+                          (every? true?
+                                  (map (fn [[_ nabe-piece]]
+                                         (= player (piece->player nabe-piece)))
+                                       (occupied-neighbors board empty-pq))))
           ]
       empty-pq)))
 
