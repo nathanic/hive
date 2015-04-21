@@ -11,8 +11,6 @@
 ; http://quil.info/api
 ; https://github.com/quil/quil/wiki/Functional-mode-(fun-mode)
 
-; my goal right now is just to draw a grid and light up the hex your cursor is on
-
 (def SKETCH-WIDTH 1024)
 (def SKETCH-HEIGHT 800)
 
@@ -21,10 +19,10 @@
 (def HEX-SIZE (grid/hex-size-from-width HEX-WIDTH))
 
 (defn piece-at-position [state pq]
-  (get (:board state) pq))
+  (game/top-piece-at-pos (:board state) pq))
 
-(defn insert-piece-at-position [state piece pq]
-  (assoc-in state [:board pq] piece))
+(defn place-piece-at-position [state piece pq]
+  (update-in state [:board] game/spawn-piece piece pq))
 
 (defn deselect-piece [state]
   (dissoc state :selected :valid-moves))
@@ -32,13 +30,13 @@
 (defn select-piece [state pq]
   (if (= (:selected state) pq)
     (deselect-piece state)
-    (assoc state 
+    (assoc state
            :selected pq
-           :valid-moves (game/calculate-moves (:board state) pq)   
+           :valid-moves (game/calculate-moves (:board state) pq)
            )))
 
 (defn remove-piece-at-position [state pq]
-  (dissoc-in state [:board pq]))
+  (update-in state [:board] game/remove-top-piece-at-pos pq))
 
 ; TODO: inset a lil bit
 (defn filled-hex [pq color]
@@ -71,22 +69,14 @@
          h      (grid/hex-height-from-size (- hex-size inset))
          h÷2    (/ h 2)
          h÷4    (/ h 4)
-         w÷2    (/ (grid/hex-width-from-size (- hex-size inset)) 2)
-         ]
-     [; n
-      [ x                (- y h÷2)]
-      ; ne
-      [ (+ x w÷2)  (- y h÷4)]
-      ; se
-      [ (+ x w÷2)  (+ y h÷4)]
-      ; s
-      [ x                (+ y h÷2)]
-      ; sw
-      [ (- x w÷2)  (+ y h÷4)]
-      ; nw
-      [ (- x w÷2)  (- y h÷4)]
-      ]))
-  )
+         w÷2    (/ (grid/hex-width-from-size (- hex-size inset)) 2) ]
+     [[ x          (- y h÷2)] ; n
+      [ (+ x w÷2)  (- y h÷4)] ; ne
+      [ (+ x w÷2)  (+ y h÷4)] ; se
+      [ x          (+ y h÷2)] ; s
+      [ (- x w÷2)  (+ y h÷4)] ; sw
+      [ (- x w÷2)  (- y h÷4)] ; nw
+      ])))
 
 #_(defn pixel-verticies-of-hex
   "calculates the PIXEL coordinates of the pointy-topped hexagon
@@ -240,10 +230,26 @@
   (decode-piece \l)
   )
 
+(defn valid-state? [state]
+  ; each piece should appear either in :board or :unplaced,
+  ; and no other things should be in those
+  ; TODO: ensure no repeats of pieces
+  (= (clojure.set/union (vals (:board state)) (:unplaced state))
+     game/PIECES))
+
+(defn choose-next-placement [state raw-key]
+  ; choose from the unplaced pool
+  (let [prefix (name (decode-piece raw-key))
+        chosen (some (fn [pc] (.startsWith (name pc) prefix)) (:unplaced state)) ]
+    chosen
+    )
+  )
+
 (defn on-key-typed [state evt]
   ; TODO: numerical indices and quantity limits on pieces based on current board state
   (println "key typed: " state evt)
-  (assoc state :next-placement (decode-piece (:raw-key evt))))
+  (if-let [next-placement (decode-piece (:raw-key evt))]
+    (assoc state :next-placement next-placement)))
 
 ; what all actions do we need?
 ; pick an unplaced piece
@@ -257,18 +263,18 @@
   (println "mouse clicked" state evt)
   (case button
     :left (let [pq       (grid/pixel->nearest-hex HEX-SIZE [x y])
-                target   (piece-at-position state pq) 
+                target   (piece-at-position state pq)
                 selected (:selected state)
                 ]
-            (cond 
+            (cond
               (and selected (nil? target))
               nil ; TODO: move the piece
 
               :else
               (if target
                 (select-piece state pq)
-                (if-let [piece (:next-placement state)] 
-                  (insert-piece-at-position state piece pq)
+                (if-let [piece (:next-placement state)]
+                  (place-piece-at-position state piece pq)
                   state)))
             )
     :right (let [pq     (grid/pixel->nearest-hex HEX-SIZE [x y])
@@ -276,8 +282,8 @@
              (if target
                (remove-piece-at-position state pq)
                #_(assoc state :selected pq)
-               #_(if-let [piece (:next-placement state)] 
-                   (insert-piece-at-position state piece pq)
+               #_(if-let [piece (:next-placement state)]
+                   (place-piece-at-position state piece pq)
                    state)))
 
     state))
@@ -295,7 +301,8 @@
   (q/stroke-weight 1)
   (q/stroke (q/color 0 0 255))
   (draw-hex-grid state)
-  (doseq [[coords piece] (:board state)]
+  (doseq [[coords pieces] (:board state)
+          piece pieces]
     (render-piece coords piece))
   (if-let [selected-hex (:selected state)]
     (draw-hex-outline selected-hex 2 5 (q/color 255 10 10 240)))
@@ -303,6 +310,12 @@
     (draw-filled-hex mouse-hex 1 (q/color 255 100 10 200)))
   (doseq [pq (:valid-moves state)]
     (draw-filled-hex pq 1 (q/color 100 240 10 150)))
+
+  ; filthy lame hax
+  (if-let [next-placement (:next-placement state)]
+    (render-piece [0 1] next-placement))
+  (q/fill (q/color 20 20 00))
+  (q/text "choose piece to place: [a b g l m p q s], lower case is white, upper case is black" 20 20)
   )
 
 
@@ -325,6 +338,4 @@
 
 (comment
   (go)
-  (for [n (range 1 16)] (cond (zero? (mod n 15)) "FizzBuzz" (zero? (mod n 3)) "Fizz" (zero? (mod n 5)) "Buzz" :else n))
-  (q/state-atom)
   )

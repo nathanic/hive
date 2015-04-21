@@ -1,10 +1,41 @@
 (ns hive.game
-  (:use [loom graph alg attr])
+  (:use [loom graph alg attr]) ; TODO: requireize
   (:require [hive.hex-grid :as grid]
             [clojure.core.match :refer [match]]
             [clojure.core.typed :as t
-             :refer [defalias ann U Vec Map Seq]]
-            ))
+             :refer [ann U Vec Map Set Seq Option Keyword Any All]]
+            )
+  (:import [loom.graph BasicEditableGraph])
+  )
+(comment
+  ; need types for loom stuff in order to proceed on typing this
+  ; add-edges
+  ; graph
+  ; connected?
+  ; remove-nodes
+  ; bf-traverse
+  (t/check-ns)
+  (macroexpand '(U ~@PIECES))
+  (defmacro make-union [set-name type-name & elems]
+    (let [symbols (for [elem elems]
+                    (->> elem (str \') symbol)
+                    ;; (-> elem str symbol)
+                    )]
+     `(do
+       (def ~set-name #{~@elems})
+       (t/defalias ~type-name
+         (U ~@symbols))
+       )))
+  (macroexpand-1 '(make-union fooset footype :a :b :c))
+  (make-union fooset FooType :a :b :c)
+  (t/cf :a FooType)
+  )
+
+(ann add-edges [BasicEditableGraph '[Any Any] * -> BasicEditableGraph])
+(ann graph [Any * -> BasicEditableGraph])
+(ann connected? [BasicEditableGraph -> boolean])
+(ann remove-nodes [BasicEditableGraph Any * -> BasicEditableGraph])
+(ann bf-traverse [BasicEditableGraph Any -> (Seq Any)])
 
 (def PIECES #{:bA1 :bA2 :bA3
               :bB1 :bB2
@@ -23,7 +54,7 @@
               :wQ
               :wS1 :wS2})
 
-(defalias Piece ; is there a way to be DRY about this?
+(t/defalias Piece ; is there a way to be DRY about this?
   (U ':bA1 ':bA2 ':bA3
      ':bB1 ':bB2
      ':bG1 ':bG2 ':bG3
@@ -42,14 +73,19 @@
      ':wS1 ':wS2
      ))
 
-(defalias Species "a species-identifier keyword"
+(t/defalias Species "a species-identifier keyword"
   (U ':ant ':beetle ':grasshopper ':ladybug ':mosquito ':pillbug ':queen-bee ':spider))
 
-(defalias Player "a player-identifier keyword"
+(t/defalias Player "a player-identifier keyword"
   (U ':white ':black))
 
-(defalias Board
-  (Map grid/AxialPoint Piece))
+; the board is a map from axial coordinates to ordered lists of pieces at that position
+; the first item in a given position list is the bottommost, the last item the topmost
+(t/defalias Board
+  (Map grid/AxialPoint '[Piece]))
+
+; it is also sometimes more convenient to build a Loom graph representation
+(t/defalias BoardGraph BasicEditableGraph)
 
 (ann LETTER->SPECIES (Map Character Species))
 (def LETTER->SPECIES
@@ -120,13 +156,36 @@
       (nodes))
   )
 
-(ann occupied? [Board grid/AxialPoint -> bool])
+(ann top-piece-at-pos [Board grid/AxialPoint -> (Option Piece)])
+(defn top-piece-at-pos
+  "get the topmost piece of the stack at the given axial coordinates.
+  if no piece is found, returns nil."
+  [board pq]
+  (let [[piece & _] (get board pq)]
+    piece))
+
+(ann remove-top-piece-at-pos [Board grid/AxialPoint -> Board])
+(defn remove-top-piece-at-pos [board pq]
+  (if-let [pieces (get board pq)]
+    (assoc board pq (rest pieces))
+    board))
+
+(ann spawn-piece [Board Piece grid/AxialPoint -> Board])
+(defn spawn-piece [board piece pq]
+  (update-in board [pq] conj piece))
+
+(defn move-piece [board from-pq to-pq]
+  ;; remove the piece from from-pq, move it over
+  ;; do move-validation here?
+  )
+
+(ann occupied? [Board grid/AxialPoint -> boolean])
 (defn occupied?
   "query whether the given pq coordinates are occupied on the given board"
   [board pq]
-  (contains? board pq))
+  (not-empty (get board pq)))
 
-(ann unoccupied? [Board grid/AxialPoint -> bool])
+(ann unoccupied? [Board grid/AxialPoint -> boolean])
 (def unoccupied?
   (comp not occupied?))
 
@@ -134,11 +193,12 @@
 (defn occupied-neighbors
   "query immediate neighbors of this piece that are themselves occupied by pieces"
   [board pq]
-  (for [nabe-pq (grid/neighbors pq)
+  (t/for [nabe-pq :- grid/AxialPoint (grid/neighbors pq)
         :when (occupied? board nabe-pq) ]
-    [nabe-pq (get board nabe-pq)]))
+    :- '['[grid/AxialPoint Piece]]
+    [nabe-pq (top-piece-at-pos board nabe-pq)]))
 
-(ann planar-passable? [Board grid/AxialPoint grid/AxialPoint -> bool])
+(ann planar-passable? [Board grid/AxialPoint grid/AxialPoint -> boolean])
 (defn planar-passable?
   "determine if two adjacent positions are planar-passable (not gated)"
   [board from to]
@@ -153,6 +213,7 @@
         (or (and occ1 (not occ2))
             (and (not occ1) occ2))))))
 
+(ann piece-is-free? [BoardGraph Piece -> boolean])
 (defn piece-is-free?
   "given a graph of a Hive board, and a piece name keyword,
   decide if the piece is free to move."
@@ -161,7 +222,7 @@
 
 (comment
   (graph)
-(def board
+  (def board
     {[4 5] :bA1, [2 3] :bQ, [3 5] :wQ, [3 4] :wS1, [2 5] :wA1, [2 4] :bA2}
     )
   (def bg (board->graph board))
@@ -175,58 +236,26 @@
   (calculate-moves board [3 4])
   )
 
+(ann free-pieces [BoardGraph -> (Vec Piece)])
 (defn free-pieces
   "return a list of names of free pieces in the given board graph"
   [board-graph]
   (filter (partial piece-is-free? board-graph) (nodes board-graph)))
 
-; build a graph from the above map
-; coords as node attributes
-  ; compute coords from directions as we go
-; dirs as edge attributes
-#_(defn board->graph [board]
-  ; fold over pieces/nodes
-  (reduce (fn [g piece]
-            ; fold over this piece's neighbors
-            (reduce (fn [g [dir nabe-piece]]
-                      (-> g
-                          (add-edges [piece nabe-piece] )
-                          (add-attr piece nabe-piece :dir dir )
-                          (add-attr nabe-piece :pos (grid/neighbor (attr g piece :pos) dir))))
-                    g
-                    (get board piece)))
-          ; prime the graph with the first node and a position at the origin
-          (-> (graph (first (keys board)))
-              (add-attr (first (keys board)) :pos [0 0]))
-          (keys board)))
-; i can't believe the above worked the first time!
-
-
-; board is (Map '[Long Long] Keyword)
-#_(defn board->graph [board]
-  (reduce
-    (fn [g [pq piece]]
-      (assoc g
-              piece
-              (for [neighbor (grid/neighbors pq)
-                    :when (occupied? board neighbor) ]
-                (get board neighbor))))
-    {}
-    board))
-
-(ann board->graph [Board -> loom.graph.BasicEditableGraph])
+(ann board->graph [Board -> BoardGraph])
 (defn board->graph [board]
   ; fold board structure into graph
   (reduce
-    (fn [g [pq piece]]
+    (fn [g [pq [piece & _]]]
       ; fold occupied neighbors of this piece into graph as edges
       (reduce
         (fn [g nabe-piece]
           (add-edges g [piece nabe-piece]))
         g
-        (for [nabe-pq (grid/neighbors pq)
+        (t/for [nabe-pq :- grid/AxialPoint (grid/neighbors pq)
               :when (occupied? board nabe-pq) ]
-          (get board nabe-pq))))
+          :- Piece
+          (top-piece-at-pos board nabe-pq))))
     (graph)
     board))
 
@@ -285,20 +314,19 @@
 (ann allowed-moves [Board grid/AxialPoint -> (Set grid/AxialPoint)])
 (defmulti allowed-moves
   "internal helper multimethod; you probably want to call calculate-moves instead"
-  (fn [board pq] (piece->species (get board pq))))
+  (fn [board pq] (piece->species (top-piece-at-pos board pq))))
 
 ; don't know what it is -> it gets no moves
 (defmethod allowed-moves :default
   [_ _]
   #{})
 
-; board data structure is a map from pq coords to pieces
-; might do this as a multimethod
 (defmethod allowed-moves :queen-bee
   [board pq]
   (set
-    (for [neighbor-pq (grid/neighbors pq)
+    (t/for [neighbor-pq :- grid/AxialPoint (grid/neighbors pq)
           :when (planar-passable? board pq neighbor-pq) ]
+      :- grid/AxialPoint
       neighbor-pq)))
 
 ; need unit tests for all of these
@@ -376,7 +404,8 @@
   ; return all points connected to starting position
 (defmethod allowed-moves :ant
   [board pq]
-  (-> (let [board (dissoc board pq)
+  ; TODO TODO change me for to support stacks!
+  (-> (let [board (remove-top-piece-at-pos board pq)
             empties (set
                       (for [[ppq piece] board
                             nabe-pq     (grid/neighbors ppq)
@@ -497,13 +526,14 @@
           :when (planar-passable? board pq neighbor-pq) ]
       neighbor-pq)))
 
-(ann calculate-moves [State grid/AxialPoint -> (Set grid/AxialPoint)])
+; might need more state... last-moved piece for pillbug
+(ann calculate-moves [Board grid/AxialPoint -> (Set grid/AxialPoint)])
 (defn calculate-moves
   "calculate the set of possible destination coordinates for the bug at a given position"
   [board pq]
   ; TODO: pillbug checks
   (let [bg (board->graph board)]
-    (if (piece-is-free? bg (get board pq))
+    (if (piece-is-free? bg (top-piece-at-pos board pq))
       (allowed-moves board pq)
       #{})))
 
@@ -558,6 +588,7 @@
 ; for each friendly piece
   ; for each unoccupied neighbor hex of piece
     ; accum hex if this empty neighbor has no pieces of opposing color
+(ann spawn-positions [Board Player -> (Vec grid/AxialPoint)])
 (defn spawn-positions [board player]
   (set
     (for [; find all friendly pieces
@@ -579,12 +610,4 @@
   (swap! state* assoc :valid-moves (spawn-positions (current-board!) :black))
   )
 
-; how to represent stacked pieces?
-; board is map to lists of pieces instead of to pieces?
-  ; sounds like an un-fun refactor
-; multiple boards for each z-index?
-; store covered pieces in another structure?
-  ; :covered {[0 0] [:wQ :bB1 :wB2]}
-  ; the main board structure always reflects topmost/effective pieces
-  ; (stack-height? state pq)
 

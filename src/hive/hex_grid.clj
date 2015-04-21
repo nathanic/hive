@@ -1,7 +1,7 @@
 (ns hive.hex-grid
   (:use [loom graph alg attr])
   (:require [clojure.core.typed :as t
-             :refer [defalias ann U Vec Map Seq]]))
+             :refer [defalias ann U Vec Map Seq Option]]))
 
 ; so we're using a pointy-top hex grid with an axial coordinate system
 ; http://www.redblobgames.com/grids/hexagons/#coordinates
@@ -51,10 +51,18 @@
    :nw :se
    })
 
+(ann round [Number -> Long])
+(defn- round [x]
+  (-> x double Math/round))
+
+(ann abs [Number -> Double])
+(defn- abs [x]
+  (-> x double Math/abs))
+
 (ann opposite-direction [Direction -> Direction])
 (defn opposite-direction
   [dir]
-  (DIR-OPPOSITES dir))
+  (or (DIR-OPPOSITES dir) :e))
 
 (ann neighbor [AxialPoint Direction -> AxialPoint])
 (defn neighbor
@@ -97,13 +105,6 @@
          (abs (- z1 z2)))
       long
       (/ 2)))
-
-(ann neighbors? [AxialPoint AxialPoint -> bool])
-(defn neighbors? [pq1 pq2]
-  (let [cu1 (axial->cube pq1)
-        cu2 (axial->cube pq2)
-        dist (cube-distance cu1 cu2)]
-    (= dist 1)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Jommetry
@@ -165,13 +166,6 @@
 (defn cube->axial [[x y z]]
   [x y])
 
-(ann round [Number -> Long])
-(defn- round [x]
-  (-> x double Math/round))
-
-(ann abs [Number -> Double])
-(defn- abs [x]
-  (-> x double Math/abs))
 
 (comment
   (cube-round [1.1 1.2 1.3])
@@ -267,6 +261,13 @@
         [[x y] (pixel->nearest-hex s [x y])])))
   )
 
+(ann neighbors? [AxialPoint AxialPoint -> boolean])
+(defn neighbors? [pq1 pq2]
+  (let [cu1 (axial->cube pq1)
+        cu2 (axial->cube pq2)
+        dist (cube-distance cu1 cu2)]
+    (= dist 1)))
+
 ;http://www.redblobgames.com/grids/hexagons/#rotation
 (ann rotate-vector-60 [CubeVector Rotation -> CubeVector])
 (defn rotate-vector-60
@@ -302,7 +303,10 @@
   (= (gate-positions [0 4] [1 3]) [[1 4] [0 3]])
   )
 
-(ann find-direction-from-axial-points [AxialPoint AxialPoint -> (U Nil Direction)])
+; do i really have to do this myself?
+(ann clojure.set/map-invert (All [a b] [(Map a b) -> (Map b a)]))
+
+(ann find-direction-from-axial-points [AxialPoint AxialPoint -> (Option Direction)])
 (defn find-direction-from-axial-points
   [from-pq to-pq]
   (get (clojure.set/map-invert DIR-VECTORS) (mapv - to-pq from-pq))
