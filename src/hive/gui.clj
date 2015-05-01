@@ -3,14 +3,21 @@
   (:require [quil.core :as q]
             [quil.middleware :as m]
             [clojure.string :as string]
-            [hive.hex-grid :as grid]
+            [clojure.tools.logging :as log]
             [hive.game :as game]
+            [hive.game-server :as server]
             [hive.util :refer [dissoc-in]]
             ))
 
 ; http://quil.info/api
 ; https://github.com/quil/quil/wiki/Functional-mode-(fun-mode)
 
+; TODO: more client-servery separation between this and the game module
+; mock out some kind of (send-move!) type deal, and all state changes pass through that
+; remove all referenes to hive.game in here
+; maybe have a .cljx file with some accessors and helpers for this struct though
+
+; need to enforce turns, and which
 (def SKETCH-WIDTH 1024)
 (def SKETCH-HEIGHT 800)
 
@@ -19,23 +26,42 @@
 (def HEX-SIZE (grid/hex-size-from-width HEX-WIDTH))
 
 (defn piece-at-position [state pq]
-  (game/top-piece-at-pos (:board state) pq))
+  (game/top-piece-at-pos (:board (:game state)) pq))
 
+;(ann place-piece-at-position [State Piece Point -> State])
 (defn place-piece-at-position [state piece pq]
-  (update-in state [:board] game/spawn-piece piece pq))
+  ; TODO: account for this request taking time
+  ; and possibly failing
+  ; need to simulate both
+  ; maybe do a core async thing or something
+  (if-let [g' (server/send-move (:id (:game state))
+                                {:piece piece
+                                 :position pq})]
+    (assoc state
+           :next-placement nil
+           :game g')
+    (do
+      (println "failed to send move!!!")
+      state)))
+
 
 (defn deselect-piece [state]
   (dissoc state :selected :valid-moves))
 
 (defn select-piece [state pq]
+  (log/info "select piece" state pq)
   (if (= (:selected state) pq)
     (deselect-piece state)
-    (assoc state
-           :selected pq
-           :valid-moves (game/calculate-moves (:board state) pq)
-           )))
+    (let [{:keys [board possible-moves]} (:game state)]
+      (assoc state
+             :selected pq
+             :highlight-cells (->> (game/top-piece-at-pos board pq)
+                                possible-moves
+                                (map :position))
+             ;; :valid-moves (game/calculate-moves (:board state) pq)
+             ))))
 
-(defn remove-piece-at-position [state pq]
+#_(defn remove-piece-at-position [state pq]
   (update-in state [:board] game/remove-top-piece-at-pos pq))
 
 ; TODO: inset a lil bit
@@ -76,34 +102,6 @@
       [ x          (+ y h÷2)] ; s
       [ (- x w÷2)  (+ y h÷4)] ; sw
       [ (- x w÷2)  (- y h÷4)] ; nw
-      ])))
-
-#_(defn pixel-verticies-of-hex
-  "calculates the PIXEL coordinates of the pointy-topped hexagon
-  at the given axial hex coordinates, optionally inset by some number of pixels.
-  results in a vector of [x y] pairs in the order [n, ne, se, s, sw, nw]"
-  ([pq hex-size]
-   (pixel-verticies-of-hex pq hex-size 0))
-  ([pq hex-size inset]
-   (let [[x y]  (grid/axial->pixel hex-size pq) ; center coordinates
-         h      (grid/hex-height-from-size hex-size)
-         h÷2    (/ h 2)
-         h÷4    (/ h 4)
-         w÷2    (/ (grid/hex-width-from-size hex-size) 2)
-         -inset (- inset)
-         ]
-     [; n
-      [ x                (- y h÷2 -inset)]
-      ; ne
-      [ (+ x w÷2 -inset)  (- y h÷4 -inset)]
-      ; se
-      [ (+ x w÷2 -inset)  (+ y h÷4 -inset)]
-      ; s
-      [ x                (+ y h÷2 -inset)]
-      ; sw
-      [ (- x w÷2 inset)  (+ y h÷4 -inset)]
-      ; nw
-      [ (- x w÷2 inset)  (- y h÷4 -inset)]
       ])))
 
 (defn draw-filled-hex [pq inset color]
@@ -206,8 +204,7 @@
   ;; (q/frame-rate 1)
   (q/frame-rate 15)
   ;; (q/color-mode :hsb)
-  {:board {}
-   :unplaced game/PIECES
+  {:game (server/create-game)
    })
 
 (defn update [state]
@@ -224,13 +221,16 @@
           color  (if upper? \b \w)]
       (keyword (str color (string/upper-case raw-key))))))
 
+(defn keypress->species [raw-key]
+  (get game/LETTER->SPECIES (-> raw-key first string/upper-case)))
+
 (comment
   (decode-piece \A)
   (decode-piece \a)
   (decode-piece \l)
   )
 
-(defn valid-state? [state]
+#_(defn valid-state? [state]
   ; each piece should appear either in :board or :unplaced,
   ; and no other things should be in those
   ; TODO: ensure no repeats of pieces
@@ -239,16 +239,26 @@
 
 (defn choose-next-placement [state raw-key]
   ; choose from the unplaced pool
-  (let [prefix (name (decode-piece raw-key))
-        chosen (some (fn [pc] (.startsWith (name pc) prefix)) (:unplaced state)) ]
-    chosen
-    )
-  )
+  (let [player-letter ({:white \w, :black \b} (:turn (:game state)))
+        species-letter (#{\A \B \G \L \M \P \Q \S} (first (string/upper-case raw-key)))
+        prefix (str player-letter species-letter)] 
+    (if species-letter
+      (-> (filter (fn [pc] (.startsWith (name pc) prefix))
+                  (-> state :game :unplaced))
+          sort
+          first)
+      nil)))
+
+(comment
+  (name (decode-piece \A))
+  (choose-next-placement {:game {:unplaced #{:wQ :bQ :bA2 :bA3 :wS2 :wG1 :wG2 :wG3}}}
+                         \p
+                         ))
 
 (defn on-key-typed [state evt]
   ; TODO: numerical indices and quantity limits on pieces based on current board state
   (println "key typed: " state evt)
-  (if-let [next-placement (decode-piece (:raw-key evt))]
+  (if-let [next-placement (choose-next-placement state (:raw-key evt))]
     (assoc state :next-placement next-placement)))
 
 ; what all actions do we need?
@@ -266,9 +276,10 @@
                 target   (piece-at-position state pq)
                 selected (:selected state)
                 ]
+            (log/info "left click pq" pq "target" target "selected" selected)
             (cond
               (and selected (nil? target))
-              nil ; TODO: move the piece
+              state ; TODO: move the piece
 
               :else
               (if target
@@ -279,7 +290,7 @@
             )
     :right (let [pq     (grid/pixel->nearest-hex HEX-SIZE [x y])
                  target (piece-at-position state pq) ]
-             (if target
+             #_(if target
                (remove-piece-at-position state pq)
                #_(assoc state :selected pq)
                #_(if-let [piece (:next-placement state)]
@@ -294,30 +305,51 @@
   (def board (:board @state*))
   (prn board)
   )
-(defn draw [state]
-  (reset! state* state)
-  ; Clear the sketch by filling it with light-grey color.
-  (q/background 190)
-  (q/stroke-weight 1)
-  (q/stroke (q/color 0 0 255))
-  (draw-hex-grid state)
-  (doseq [[coords pieces] (:board state)
-          piece pieces]
-    (render-piece coords piece))
-  (if-let [selected-hex (:selected state)]
-    (draw-hex-outline selected-hex 2 5 (q/color 255 10 10 240)))
-  (if-let [mouse-hex (:hovered state)]
-    (draw-filled-hex mouse-hex 1 (q/color 255 100 10 200)))
-  (doseq [pq (:valid-moves state)]
-    (draw-filled-hex pq 1 (q/color 100 240 10 150)))
 
-  ; filthy lame hax
-  (if-let [next-placement (:next-placement state)]
-    (render-piece [0 1] next-placement))
-  (q/fill (q/color 20 20 00))
-  (q/text "choose piece to place: [a b g l m p q s], lower case is white, upper case is black" 20 20)
+(defn placable-pieces
+  [state]
+  (let [{:keys [unplaced turn], :as g} (:game state)]
+    (filter
+      (fn [piece] (= turn (game/piece->player piece)))
+      unplaced)))
+
+(comment
+  (placable-pieces {:game {:turn :white
+                           :unplaced #{:wQ :wS1 :bQ :bA2 :wA3}
+                           }})
+  (placable-pieces @state*)
   )
 
+(defn draw [state]
+  (let [{:keys [highlight-cells selected hovered game next-placement]} state
+        {:keys [turn board]} game ]
+    (q/background (if (= :white turn)
+                    190
+                    100))
+    (q/stroke-weight 1)
+    (q/stroke (q/color 0 0 255))
+    (draw-hex-grid state)
+    (doseq [[coords pieces] board
+            piece pieces]
+      (render-piece coords piece))
+    (when selected
+      (draw-hex-outline selected 2 5 (q/color 255 10 10 240)))
+    (when hovered
+      (draw-filled-hex hovered 1 (q/color 255 100 10 200)))
+    (doseq [pq highlight-cells]
+      (draw-filled-hex pq 1 (q/color 100 240 10 150)))
+
+    ; filthy lame hax
+    (when next-placement
+      (render-piece [0 1] next-placement))
+    (q/fill (q/color 20 20 00))
+    (q/text (str "it is " (name (or turn "nobody")) "'s turn.  "
+                 "choose piece to place: ["
+                 (apply sorted-set
+                        (map (comp second name game/piece->species)
+                             (placable-pieces state)))
+                 "]")
+            20 20)))
 
 (defn go []
   (q/defsketch hive-applet
@@ -334,8 +366,14 @@
     ; This sketch uses functional-mode middleware.
     ; Check quil wiki for more info about middlewares and particularly
     ; fun-mode.
-    :middleware [m/fun-mode]))
+    :middleware [m/fun-mode])
+  (def state* (quil.applet/with-applet hive.gui/hive-applet (quil.core/state-atom)))
+  )
 
 (comment
   (go)
+  (clojure.pprint/pprint @state*)
+  (keys @server/games*)
+  (swap! state* assoc :highlight-cells nil)
+
   )
