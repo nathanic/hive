@@ -5,6 +5,7 @@
             [clojure.string :as string]
             [clojure.tools.logging :as log]
             [hive.game :as game]
+            [hive.hex-grid :as grid]
             [hive.game-server :as server]
             [hive.util :refer [dissoc-in]]
             ))
@@ -17,7 +18,8 @@
 ; remove all referenes to hive.game in here
 ; maybe have a .cljx file with some accessors and helpers for this struct though
 
-; need to enforce turns, and which
+; need to enforce turns
+
 (def SKETCH-WIDTH 1024)
 (def SKETCH-HEIGHT 800)
 
@@ -55,9 +57,7 @@
     (let [{:keys [board possible-moves]} (:game state)]
       (assoc state
              :selected pq
-             :highlight-cells (->> (game/top-piece-at-pos board pq)
-                                possible-moves
-                                (map :position))
+             :highlight-cells (get possible-moves (game/top-piece-at-pos board pq))
              ;; :valid-moves (game/calculate-moves (:board state) pq)
              ))))
 
@@ -259,7 +259,8 @@
   ; TODO: numerical indices and quantity limits on pieces based on current board state
   (println "key typed: " state evt)
   (if-let [next-placement (choose-next-placement state (:raw-key evt))]
-    (assoc state :next-placement next-placement)))
+    (assoc state :next-placement next-placement)
+    state))
 
 ; what all actions do we need?
 ; pick an unplaced piece
@@ -344,11 +345,10 @@
       (render-piece [0 1] next-placement))
     (q/fill (q/color 20 20 00))
     (q/text (str "it is " (name (or turn "nobody")) "'s turn.  "
-                 "choose piece to place: ["
+                 "choose piece to place: "
                  (apply sorted-set
-                        (map (comp second name game/piece->species)
-                             (placable-pieces state)))
-                 "]")
+                   (map (comp first string/upper-case name game/piece->species)
+                        (placable-pieces state))))
             20 20)))
 
 (defn go []

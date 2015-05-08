@@ -7,30 +7,17 @@
             )
   (:import [loom.graph BasicEditableGraph])
   )
+
+; BUG BUG most instances of (dissoc board ...) are probably bugs
+; now that we have stacks
+; need to hunt them all down and fix them
+; in some cases, change to remove-top-piece-at-pos
+
 (comment
-  ; need types for loom stuff in order to proceed on typing this
-  ; add-edges
-  ; graph
-  ; connected?
-  ; remove-nodes
-  ; bf-traverse
   (t/check-ns)
-  (macroexpand '(U ~@PIECES))
-  (defmacro make-union [set-name type-name & elems]
-    (let [symbols (for [elem elems]
-                    (->> elem (str \') symbol)
-                    ;; (-> elem str symbol)
-                    )]
-     `(do
-       (def ~set-name #{~@elems})
-       (t/defalias ~type-name
-         (U ~@symbols))
-       )))
-  (macroexpand-1 '(make-union fooset footype :a :b :c))
-  (make-union fooset FooType :a :b :c)
-  (t/cf :a FooType)
   )
 
+; TODO graph type could probably be generalized
 (ann add-edges [BasicEditableGraph '[Any Any] * -> BasicEditableGraph])
 (ann graph [Any * -> BasicEditableGraph])
 (ann connected? [BasicEditableGraph -> boolean])
@@ -213,11 +200,16 @@
     :- '['[Point Piece]]
     [nabe-pq (top-piece-at-pos board nabe-pq)]))
 
+(ann position-is-stacked? [Board Point -> boolean])
+(defn position-is-stacked? [board pq]
+  (> 1 (count (get board pq))))
+
 (ann planar-passable? [Board Point Point -> boolean])
 (defn planar-passable?
-  "determine if two adjacent positions are planar-passable (not gated)"
+  "determine if two adjacent positions are planar-passable (not gated)
+  NOTE: only considers the bottommost plane! does not consider movement atop the hive"
   [board from to]
-  (let [board' (dissoc board from)]
+  (let [board' (dissoc board from)] ; BUG: should be remove-top-piece-at-pos ?
     (and
       (unoccupied? board to)
       (some (partial occupied? board')   (grid/neighbors to))
@@ -374,7 +366,7 @@
 (defmethod allowed-moves :spider
   [board pq]
   (set
-    (let [board (dissoc board pq)]
+    (let [board (dissoc board pq)] ; BUG: remove-top-piece-at-pos ?
       (for [dir   grid/DIRS
             :let  [nabe-pq (grid/neighbor pq dir)]
             :when (planar-passable? board pq nabe-pq)
@@ -410,10 +402,7 @@
             (iterate (fn [pq] (grid/neighbor pq dir)) nabe-pq))
       )))
 
-(comment
-  (calculate-moves b [1 6])
 
-  )
 ; ant moves
   ; for each occupied point
     ; add all of its unoccupied neighbors to a graph as a node
@@ -444,42 +433,6 @@
       (disj pq) ; don't allow starting position
       ))
 
-(comment
-  (def board b)
-  (def pq [0 7])
-  (calculate-moves b [0 7])
-
-  (swap! state* assoc :valid-moves (calculate-moves b [0 7]))
-  (planar-passable? board [2 7] [3 6])
-
-  (def g (graph [:a :b] [:b :c] [:d :e]))
-  (bf-traverse g :a)
-  (loom.io/view g)
-  (def empties (set
-                 (for [[ppq piece] (dissoc board pq)
-                       nabe-pq     (grid/neighbors ppq)
-                       :when       (unoccupied? (dissoc board pq) nabe-pq) ]
-                   nabe-pq)))
-
-  (def surround-graph (apply graph
-                             (for [pq1 empties
-                                   pq2 empties
-                                   :when (and (not= pq1 pq2)
-                                              (grid/neighbors? pq1 pq2)
-                                              (planar-passable? board pq1 pq2))
-                                   ]
-                               (do
-                                 (println "(planar-passable? board" pq1 pq2 ") =>"
-                                                    (planar-passable? board pq1 pq2) )
-                                 [pq1 pq2]))))
-  (clojure.pprint/pprint surround-graph)
-  (count (connected-components surround-graph))
-  (grid/neighbors? [2 7] [3 6])
-  (grid/neighbors? [2 7] [4 6])
-  (planar-passable? (dissoc board pq) [0 7] [0 8])
-
-  (swap! state* assoc :valid-moves (bf-traverse surround-graph pq))
-  )
 ; beetle moves
   ; accept all occupied immediate neighbor cells
   ; plus all planar passable neighbors
@@ -522,7 +475,8 @@
             ]
         (allowed-moves
           ; pretend the mosquito is another piece
-          (assoc board pq (-> nabe-piece name (str "MOSQUITO") keyword ))
+          ; THIS SEEMS BUGGED TO SHIT
+          (assoc board pq (-> nabe-piece name (str "MOSQUITO") keyword vector))
           pq)))))
 
 ; pillbug moves
@@ -556,27 +510,24 @@
   ; if the path to each neighbor is not gated at the 2nd level
   (let [board (:board g)
         bg    (board->graph board)]
-    (if (piece-is-free? bg (top-piece-at-pos board pq))
+    (if (or (position-is-stacked? board pq) 
+            (piece-is-free? bg (top-piece-at-pos board pq)))
       (allowed-moves board pq)
       #{})))
 
-(ann calculate-all-moves-for-player [Game Player -> (Map Piece Move)])
-(defn calculate-all-moves-for-player
-  [{:keys [board], :as g} player]
+; BUG doesn't account for player-relative moves
+; e.g. a piece might be differently mobile for each player due to pillbuggery
+(ann calculate-all-moves [Game -> (Map Piece (Vec Point))])
+(defn calculate-all-moves
+  [{:keys [board], :as g}]
   (into {}
-        (merge-with
-          concat
-          (filter
-            second
-            (t/for [[pq pieces] :- '[Point (Vec Piece)]   board
-                    :let  [piece (top-piece-of-stack pieces)]
-                    :when (= player (piece->player piece))
-                    ]
-              :- '[Piece '[Move]]
-              [piece (not-empty
-                       (t/for [position (calculate-move-positions g pq)]
-                         {:piece piece
-                          :position position}))])))))
+        (filter
+          second
+          (t/for [[pq pieces] :- '[Point (Vec Piece)]   board
+                  :let [positions (calculate-move-positions g pq)]
+                  :when (not-empty positions)]
+            :- '[Piece (Vec Point)]
+            [(top-piece-of-stack pieces) positions]))))
 
 (comment
   (def g (current-game!))
@@ -698,9 +649,9 @@
                    :mandatory {:id String
                                :board Board
                                :unplaced (Set Piece)
-                               :moves '[Move]
-                               :possible-moves (Map Piece '[Point])
-                               :spawns '[Point]
+                               :moves (Vec Move)
+                               :possible-moves (Map Piece (Vec Point))
+                               :spawns (Vec Point)
                                :turn Player
                                :winner (U Player ':tie nil)
    ; TODO: player metadata
@@ -755,6 +706,24 @@
                         :turn     opponent
                         :winner   (determine-winner board)
                         )]
-    (assoc g :possible-moves (calculate-all-moves-for-player g opponent))
+    (assoc g :possible-moves (calculate-all-moves g))
     ))
 
+
+(comment
+  ; trying to be DRYer about enum union types
+  (macroexpand '(U ~@PIECES))
+  (defmacro make-union [set-name type-name & elems]
+    (let [symbols (for [elem elems]
+                    (->> elem (str \') symbol)
+                    ;; (-> elem str symbol)
+                    )]
+     `(do
+       (def ~set-name #{~@elems})
+       (t/defalias ~type-name
+         (U ~@symbols))
+       )))
+  (macroexpand-1 '(make-union fooset footype :a :b :c))
+  (make-union fooset FooType :a :b :c)
+  (t/cf :a FooType)
+  )
