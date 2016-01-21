@@ -106,6 +106,12 @@
     (println "piece->player" piece (type piece)))
   (->> piece name first {\w :white, \b :black}))
 
+(ann valid-piece? [Piece -> Boolean])
+(defn valid-piece?
+  "decide if a given keyword is a proper Piece"
+  [p]
+  (contains? PIECES p))
+
 (comment
   (piece->species :wQ)
   (piece->player :wQ)
@@ -476,6 +482,7 @@
         (allowed-moves
           ; pretend the mosquito is another piece
           ; THIS SEEMS BUGGED TO SHIT
+          ; 2016-01-20 coming back to this project, idle since May, above is a heartening comment, heh
           (assoc board pq (-> nabe-piece name (str "MOSQUITO") keyword vector))
           pq)))))
 
@@ -510,7 +517,7 @@
   ; if the path to each neighbor is not gated at the 2nd level
   (let [board (:board g)
         bg    (board->graph board)]
-    (if (or (position-is-stacked? board pq) 
+    (if (or (position-is-stacked? board pq)
             (piece-is-free? bg (top-piece-at-pos board pq)))
       (allowed-moves board pq)
       #{})))
@@ -592,21 +599,30 @@
     ; accum hex if this empty neighbor has no pieces of opposing color
 (ann spawn-positions [Board Player -> (Vec Point)])
 (defn spawn-positions [board player]
+  ; TODO: account for the situation where the board contains only a single enemy piece, and no friendlies
   (set
-    (for [; find all friendly pieces
-          [pq pieces] board
-          :when      (= player (piece->player (top-piece-of-stack pieces)))
-          ; find all empty neighbors of friendly pieces
-          empty-pq   (grid/neighbors pq)
-          ; require that those empty neighbors are themselves not neighbors with any unfriendly pieces
-          :when      (and (unoccupied? board empty-pq)
-                          (every? true?
-                                  (map (fn [[_ nabe-piece]]
-                                         (println "investigating piece" nabe-piece)
-                                         (= player (piece->player nabe-piece)))
-                                       (occupied-neighbors board empty-pq))))
-          ]
-      empty-pq)))
+    (if (= 1 (count board))
+      ; special case when there is only one piece on the board
+      (let [[pq [piece]] (first board)]
+        (assert (= 1 (-> board first second count)))
+        (if (= (opposing-player player) (piece->player piece))
+          (grid/neighbors pq)
+          #{}))
+      ; the rest of the time we do this more monstrous query
+      (for [; find all friendly pieces
+            [pq pieces] board
+            :when      (= player (piece->player (top-piece-of-stack pieces)))
+            ; find all empty neighbors of friendly pieces
+            empty-pq   (grid/neighbors pq)
+            ; require that those empty neighbors are themselves not neighbors with any unfriendly pieces
+            :when      (and (unoccupied? board empty-pq)
+                            (every? true?
+                                    (map (fn [[_ nabe-piece]]
+                                           ;; (println "investigating piece" nabe-piece)
+                                           (= player (piece->player nabe-piece)))
+                                         (occupied-neighbors board empty-pq))))
+            ]
+        empty-pq))))
 
 (comment
   (swap! state* assoc :valid-moves (spawn-positions (current-board!) :white))
