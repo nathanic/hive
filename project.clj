@@ -5,8 +5,10 @@
             :url "http://www.eclipse.org/legal/epl-v10.html"}
 
   :dependencies [[org.clojure/clojure "1.8.0"]
+                 [org.clojure/clojurescript "1.7.228" :scope "provided"]
                  [org.clojure/tools.analyzer "0.6.7"]
                  [org.clojure/tools.analyzer.jvm "0.6.9"]
+                 ;; [org.clojure/data.json "0.2.6"]
                  ;; [org.clojure/core.async "0.2.374" :exclusions [org.clojure/tools.analyzer.jvm]]
                  [ring-server "0.4.0"]
                  [reagent "0.5.1" :exclusions [org.clojure/tools.reader]]
@@ -17,8 +19,10 @@
                  [compojure "1.4.0" :exclusions [instaparse]]
                  [hiccup "1.0.5"]
                  [environ "1.0.1"]
-                 [org.clojure/clojurescript "1.7.228" :scope "provided"]
+                 [cljs-http "0.1.16"]
+                 [com.cognitect/transit-cljs "0.8.237"]
                  [secretary "1.2.3"]
+                 [com.cognitect/transit-clj "0.8.285"]
                  [venantius/accountant "0.1.6" :exclusions [org.clojure/tools.reader]]
                  ;; [org.clojure/core.typed "0.2.87"]
                  ;; [swiss-arrows "1.0.0"] ; might be unused
@@ -32,8 +36,7 @@
   :plugins [[lein-environ "1.0.1"]
             [lein-cljsbuild "1.1.1"]
             [lein-asset-minifier "0.2.4"
-             :exclusions [org.clojure/clojure]]
-]
+             :exclusions [org.clojure/clojure]]]
 
   :ring {:handler hive.handler/app
          :uberwar-name "hive.war"}
@@ -49,7 +52,7 @@
                                     [:cljsbuild :builds :app :compiler :output-to]]
 
   :source-paths ["src/clj" "src/cljc"]
-  :resource-paths ["resources" "target/cljsbuild"]
+  :resource-paths ["resources" "target/cljsbuild"] ; might take out target? or fix :output-to below
 
   :minify-assets
   {:assets
@@ -63,7 +66,7 @@
                                         :pretty-print  true}}}}
 
 
-  :profiles {:dev {:repl-options {:init-ns hive.gui}
+  :profiles {:dev {:repl-options {:init-ns hive.repl}
 
                    :dependencies [[ring/ring-mock "0.3.0"]
                                   [ring/ring-devel "1.4.0"]

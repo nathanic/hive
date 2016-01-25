@@ -24,6 +24,7 @@
             (serve (get-handler)
                    {:port port
                     :auto-reload? true
+                    :open-browser? false
                     :join? false}))
     (println (str "You can view the site at http://localhost:" port))))
 

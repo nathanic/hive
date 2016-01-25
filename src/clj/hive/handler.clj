@@ -1,10 +1,20 @@
 (ns hive.handler
-  (:require [compojure.core :refer [GET defroutes]]
+  (:require [clojure.java.io :as io]
+            [compojure.core :refer [GET defroutes]]
             [compojure.route :refer [not-found resources]]
             [hiccup.core :refer [html]]
             [hiccup.page :refer [include-js include-css]]
             [hive.middleware :refer [wrap-middleware]]
-            [environ.core :refer [env]]))
+            [cognitect.transit :as transit]
+            [environ.core :refer [env]])
+  (:import [java.io.ByteArrayOutputStream])
+  )
+
+; probably move this to util
+(defn write-json [v]
+  (let [os (new java.io.ByteArrayOutputStream)]
+    (transit/write (transit/writer os :json) v)
+    (str os)))
 
 (def mount-target
   [:div#app
@@ -29,7 +39,11 @@
 (defroutes routes
   (GET "/" [] loading-page)
   (GET "/about" [] loading-page)
-  
+  (GET "/games" []
+       (write-json [{:title "a test game"}
+                    {:title "another test game"}
+                    ]))
+
   (resources "/")
   (not-found "Not Found"))
 
