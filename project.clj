@@ -84,9 +84,11 @@
                                   [org.clojure/tools.nrepl "0.2.12"]
                                   [com.cemerick/piggieback "0.2.1"]
                                   [pjstadig/humane-test-output "0.7.1"]
+                                  [midje "1.6.3"]
                                   ]
 
                    :source-paths ["env/dev/clj"]
+                   :test-paths ["test/clj"]
                    :plugins [[lein-figwheel "0.5.0-4"
                               :exclusions [org.clojure/core.memoize
                                            ring/ring-core
@@ -99,6 +101,7 @@
                                            org.clojure/core.async
                                            org.clojure/tools.analyzer.jvm]]
                              [org.clojure/clojurescript "1.7.170"]
+                             [lein-midje "3.2"]
                              ]
 
                    :injections [(require 'pjstadig.humane-test-output)
@@ -117,12 +120,7 @@
                    :cljsbuild {:builds {:app {:source-paths ["env/dev/cljs"]
                                               :compiler {:main "hive.dev"
                                                          :source-map true}}
-
-
-
-                                        }
-
-                               }}
+                                        }}}
 
              :uberjar {:hooks [minify-assets.plugin/hooks]
                        :source-paths ["env/prod/clj"]
@@ -136,3 +134,4 @@
                                              :compiler
                                              {:optimizations :advanced
                                               :pretty-print false}}}}}})
+
