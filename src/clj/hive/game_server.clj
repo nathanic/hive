@@ -1,10 +1,6 @@
 (ns hive.game-server
   (:require [hive.game :as game]
-            [clojure.string :as string]
-            [clojure.core.match :refer [match]]
-            [clojure.core.typed :as t
-             :refer [ann U Vec Map Set Seq Option Keyword Any All]]
-            ))
+            [clojure.string :as string]))
 
 ; temporary game state "persistence"
 ; hash map of game ids to game structures

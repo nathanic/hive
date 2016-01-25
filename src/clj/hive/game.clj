@@ -2,8 +2,7 @@
   (:use [loom graph alg attr]) ; TODO: requireize
   (:require [hive.hex-grid :as grid]
             [clojure.core.match :refer [match]]
-            [clojure.core.typed :as t
-             :refer [ann U Vec Map Set Seq Option Keyword Any All]]
+            ;; [clojure.core.typed :as t :refer [ann U Vec Map Set Seq Option Keyword Any All]]
             )
   (:import [loom.graph BasicEditableGraph])
   )
@@ -18,13 +17,13 @@
   )
 
 ; TODO graph type could probably be generalized
-(ann add-edges [BasicEditableGraph '[Any Any] * -> BasicEditableGraph])
-(ann graph [Any * -> BasicEditableGraph])
-(ann connected? [BasicEditableGraph -> boolean])
-(ann remove-nodes [BasicEditableGraph Any * -> BasicEditableGraph])
-(ann bf-traverse [BasicEditableGraph Any -> (Seq Any)])
+;; (ann add-edges [BasicEditableGraph '[Any Any] * -> BasicEditableGraph])
+;; (ann graph [Any * -> BasicEditableGraph])
+;; (ann connected? [BasicEditableGraph -> boolean])
+;; (ann remove-nodes [BasicEditableGraph Any * -> BasicEditableGraph])
+;; (ann bf-traverse [BasicEditableGraph Any -> (Seq Any)])
 
-(t/defalias Point hive.hex-grid/AxialPoint)
+;; (t/defalias Point hive.hex-grid/AxialPoint)
 
 (def PIECES #{:bA1 :bA2 :bA3
               :bB1 :bB2
@@ -43,7 +42,7 @@
               :wQ
               :wS1 :wS2})
 
-(t/defalias Piece ; is there a way to be DRY about this?
+#_(t/defalias Piece ; is there a way to be DRY about this?
   (U ':bA1 ':bA2 ':bA3
      ':bB1 ':bB2
      ':bG1 ':bG2 ':bG3
@@ -62,26 +61,26 @@
      ':wS1 ':wS2
      ))
 
-(t/defalias Species "a species-identifier keyword"
+#_(t/defalias Species "a species-identifier keyword"
   (U ':ant ':beetle ':grasshopper ':ladybug ':mosquito ':pillbug ':queen-bee ':spider))
 
-(t/defalias Player "a player-identifier keyword"
+#_(t/defalias Player "a player-identifier keyword"
   (U ':white ':black))
 
 ; the board is a map from axial coordinates to ordered lists of pieces at that position
 ; the first item in a given position list is the topmost, the last item the bottommost
-(t/defalias Board
+#_(t/defalias Board
   (Map Point '[Piece]))
 
-(ann top-piece-of-stack [(Vec Piece) -> (Option Piece)])
+#_(ann top-piece-of-stack [(Vec Piece) -> (Option Piece)])
 (defn top-piece-of-stack
   [pieces]
   (first pieces))
 
 ; it is also sometimes more convenient to build a Loom graph representation
-(t/defalias BoardGraph BasicEditableGraph)
+#_(t/defalias BoardGraph BasicEditableGraph)
 
-(ann LETTER->SPECIES (Map Character Species))
+#_(ann LETTER->SPECIES (Map Character Species))
 (def LETTER->SPECIES
   {\A :ant
    \B :beetle
@@ -92,21 +91,21 @@
    \Q :queen-bee
    \S :spider})
 
-(ann opposing-player [Player -> Player])
+#_(ann opposing-player [Player -> Player])
 (defn opposing-player [player]
   ({:white :black, :black :white} player))
 
-(ann piece->species [Piece -> (U Species nil)])
+#_(ann piece->species [Piece -> (U Species nil)])
 (defn piece->species [piece]
   (->> piece name second LETTER->SPECIES))
 
-(ann piece->player [Piece -> (U Player nil)])
+#_(ann piece->player [Piece -> (U Player nil)])
 (defn piece->player [piece]
   (when-not (keyword? piece)
     (println "piece->player" piece (type piece)))
   (->> piece name first {\w :white, \b :black}))
 
-(ann valid-piece? [Piece -> Boolean])
+#_(ann valid-piece? [Piece -> Boolean])
 (defn valid-piece?
   "decide if a given keyword is a proper Piece"
   [p]
@@ -162,7 +161,7 @@
       (nodes))
   )
 
-(ann top-piece-at-pos [Board Point -> (Option Piece)])
+#_(ann top-piece-at-pos [Board Point -> (Option Piece)])
 (defn top-piece-at-pos
   "get the topmost piece of the stack at the given axial coordinates.
   if no piece is found, returns nil."
@@ -172,13 +171,13 @@
       (println "non-keyword piece" piece "found at" pq "in board:\n" board))
     piece))
 
-(ann remove-top-piece-at-pos [Board Point -> Board])
+#_(ann remove-top-piece-at-pos [Board Point -> Board])
 (defn remove-top-piece-at-pos [board pq]
   (if-let [pieces (get board pq)]
     (assoc board pq (rest pieces))
     board))
 
-(ann spawn-piece [Board Piece Point -> Board])
+#_(ann spawn-piece [Board Piece Point -> Board])
 (defn spawn-piece [board piece pq]
   (update-in board [pq] conj piece))
 
@@ -187,30 +186,29 @@
   ;; do move-validation here?
   )
 
-(ann occupied? [Board Point -> boolean])
+#_(ann occupied? [Board Point -> boolean])
 (defn occupied?
   "query whether the given pq coordinates are occupied on the given board"
   [board pq]
   (not-empty (get board pq)))
 
-(ann unoccupied? [Board Point -> boolean])
+#_(ann unoccupied? [Board Point -> boolean])
 (def unoccupied?
   (comp not occupied?))
 
-(ann occupied-neighbors [Board Point -> (Seq '[Point Piece])])
+#_(ann occupied-neighbors [Board Point -> (Seq '[Point Piece])])
 (defn occupied-neighbors
   "query immediate neighbors of this piece that are themselves occupied by pieces"
   [board pq]
-  (t/for [nabe-pq :- Point (grid/neighbors pq)
+  (for [nabe-pq (grid/neighbors pq)
         :when (occupied? board nabe-pq) ]
-    :- '['[Point Piece]]
     [nabe-pq (top-piece-at-pos board nabe-pq)]))
 
-(ann position-is-stacked? [Board Point -> boolean])
+#_(ann position-is-stacked? [Board Point -> boolean])
 (defn position-is-stacked? [board pq]
   (> 1 (count (get board pq))))
 
-(ann planar-passable? [Board Point Point -> boolean])
+#_(ann planar-passable? [Board Point Point -> boolean])
 (defn planar-passable?
   "determine if two adjacent positions are planar-passable (not gated)
   NOTE: only considers the bottommost plane! does not consider movement atop the hive"
@@ -228,7 +226,7 @@
 
 ; BUGBUG this doesn't account for pieces that are atop other pieces
 ; the topmost z>0 pieces are always free
-(ann piece-is-free? [BoardGraph Piece -> boolean])
+#_(ann piece-is-free? [BoardGraph Piece -> boolean])
 (defn piece-is-free?
   "given a graph of a Hive board, and a piece name keyword,
   decide if the piece is free to move."
@@ -251,13 +249,13 @@
   (calculate-moves board [3 4])
   )
 
-(ann free-pieces [BoardGraph -> (Vec Piece)])
+#_(ann free-pieces [BoardGraph -> (Vec Piece)])
 (defn free-pieces
   "return a list of names of free pieces in the given board graph"
   [board-graph]
   (filter (partial piece-is-free? board-graph) (nodes board-graph)))
 
-(ann board->graph [Board -> BoardGraph])
+#_(ann board->graph [Board -> BoardGraph])
 (defn board->graph [board]
   ; fold board structure into graph
   (reduce
@@ -267,9 +265,8 @@
         (fn [g nabe-piece]
           (add-edges g [piece nabe-piece]))
         g
-        (t/for [nabe-pq :- Point (grid/neighbors pq)
+        (for [nabe-pq (grid/neighbors pq)
               :when (occupied? board nabe-pq) ]
-          :- Piece
           (top-piece-at-pos board nabe-pq))))
     (graph)
     board))
@@ -327,7 +324,7 @@
 
 
 ; TODO better name, maybe allowed-move-positions-from-point?
-(ann allowed-moves [Board Point -> (Set Point)])
+#_(ann allowed-moves [Board Point -> (Set Point)])
 (defmulti allowed-moves
   "internal helper multimethod; you probably want to call calculate-move-positions instead"
   (fn [board pq] (piece->species (top-piece-at-pos board pq))))
@@ -340,9 +337,8 @@
 (defmethod allowed-moves :queen-bee
   [board pq]
   (set
-    (t/for [neighbor-pq :- Point (grid/neighbors pq)
+    (for [neighbor-pq (grid/neighbors pq)
           :when (planar-passable? board pq neighbor-pq) ]
-      :- Point
       neighbor-pq)))
 
 ; need unit tests for all of these
@@ -506,7 +502,7 @@
       neighbor-pq)))
 
 ; might need more state... last-moved piece for pillbug
-(ann calculate-move-positions [Game Point -> (Set Point)])
+#_(ann calculate-move-positions [Game Point -> (Set Point)])
 (defn calculate-move-positions
   "calculate the set of possible destination coordinates for the bug at a given position"
   [g pq]
@@ -524,16 +520,15 @@
 
 ; BUG doesn't account for player-relative moves
 ; e.g. a piece might be differently mobile for each player due to pillbuggery
-(ann calculate-all-moves [Game -> (Map Piece (Vec Point))])
+#_(ann calculate-all-moves [Game -> (Map Piece (Vec Point))])
 (defn calculate-all-moves
   [{:keys [board], :as g}]
   (into {}
         (filter
           second
-          (t/for [[pq pieces] :- '[Point (Vec Piece)]   board
+          (for [[pq pieces] board
                   :let [positions (calculate-move-positions g pq)]
                   :when (not-empty positions)]
-            :- '[Piece (Vec Point)]
             [(top-piece-of-stack pieces) positions]))))
 
 (comment
@@ -597,7 +592,7 @@
 ; for each friendly piece
   ; for each unoccupied neighbor hex of piece
     ; accum hex if this empty neighbor has no pieces of opposing color
-(ann spawn-positions [Board Player -> (Vec Point)])
+#_(ann spawn-positions [Board Player -> (Vec Point)])
 (defn spawn-positions [board player]
   ; TODO: account for the situation where the board contains only a single enemy piece, and no friendlies
   (set
@@ -629,22 +624,21 @@
   (swap! state* assoc :valid-moves (spawn-positions (current-board!) :black))
   )
 
-(ann surrounded? [Board Point -> boolean])
+#_(ann surrounded? [Board Point -> boolean])
 (defn surrounded?
   [board pq]
   (every? (partial occupied? board) (grid/neighbors pq)))
 
-(ann find-piece [Board Piece -> Point])
+#_(ann find-piece [Board Piece -> Point])
 (defn find-piece
   [board needle-piece]
   (first
-    (t/for [[pq pieces] board
-            piece pieces
-            :when (= piece needle-piece) ]
-      :- Point
+    (for [[pq pieces] board
+          piece pieces
+          :when (= piece needle-piece) ]
       pq)))
 
-(ann determine-winner [Board -> (U Player ':tie nil)])
+#_(ann determine-winner [Board -> (U Player ':tie nil)])
 (defn determine-winner
   [board]
   (let [wQ-pos (find-piece board :wQ)
@@ -656,12 +650,12 @@
            [_ true]    :white
            :else       nil)))
 
-(t/defalias Move
+#_(t/defalias Move
   (t/HMap :mandatory {:piece Piece
                       :position Point }
           :optional {:text String}))
 
-(t/defalias Game (t/HMap
+#_(t/defalias Game (t/HMap
                    :mandatory {:id String
                                :board Board
                                :unplaced (Set Piece)
@@ -674,7 +668,7 @@
    ; name, id number, avatar url, etc.
                                }))
 
-(ann new-game [-> Game])
+#_(ann new-game [-> Game])
 (defn new-game
   "Create a fresh Game data structure"
   []
@@ -688,7 +682,7 @@
    :winner nil ; no winner yet
    })
 
-(ann valid-move? [Game Move -> boolean])
+#_(ann valid-move? [Game Move -> boolean])
 (defn valid-move?
   "determine if the proposed move is valid in the given game"
   [{:keys [unplaced spawns], :as g}
@@ -705,7 +699,7 @@
             (contains? position))))
 
 ; NB assuming move is valid...
-(ann apply-move [Game Move -> Game])
+#_(ann apply-move [Game Move -> Game])
 (defn apply-move
   "apply the given move into a game, producing a new game state"
   [{:keys [board unplaced moves], :as g}

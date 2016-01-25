@@ -207,7 +207,7 @@
   {:game (server/create-game)
    })
 
-(defn update [state]
+(defn update-sketch [state]
   (let [mouse-xy [(q/mouse-x) (q/mouse-y)]
         mouse-hex (grid/pixel->nearest-hex HEX-SIZE mouse-xy) ]
     (-> state
@@ -359,7 +359,7 @@
     :setup setup
     ; update is called on each iteration before draw is called.
     ; It updates sketch state.
-    :update update
+    :update update-sketch
     :draw draw
     :key-typed on-key-typed
     :mouse-clicked on-mouse-clicked

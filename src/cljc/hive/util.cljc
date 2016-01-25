@@ -10,3 +10,11 @@
       (let [res (dissoc m k)]
         (when-not (empty? res)
           res)))))
+
+(defn check-argument
+  "Throw a platform-appropriate exception if valid? is false"
+  [valid? msg]
+  (when-not valid?
+    #?(:clj (throw (IllegalArgumentException. msg))
+       :cljs (throw (js/Error. msg)))))
+
